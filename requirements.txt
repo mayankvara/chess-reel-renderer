@@ -1,8 +1,8 @@
-fastapi==0.111.0
-uvicorn==0.30.1
-python-chess==1.999
-cairosvg==2.7.1
-moviepy==1.0.3
-Pillow==10.3.0
-pydantic==2.8.2
-imageio-ffmpeg==0.5.1
+fastapi
+uvicorn
+python-chess
+cairosvg
+moviepy<2.0.0
+Pillow
+pydantic
+imageio-ffmpeg
