@@ -7,7 +7,7 @@ import cairosvg
 import chess
 import chess.svg
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from moviepy.editor import AudioFileClip, CompositeAudioClip, ImageSequenceClip
 from PIL import Image, ImageDraw, ImageFont
@@ -38,6 +38,18 @@ def get_font(size: int, bold: bool = False, serif: bool = False):
     for name in font_names:
         try:
             return ImageFont.truetype(name, size)
+        except Exception:
+            continue
+
+    candidates = [
+        "DejaVuSans.ttf",
+        "Arial.ttf",
+        "LiberationSans-Regular.ttf",
+        "FreeSans.ttf",
+    ]
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size)
         except Exception:
             continue
 
@@ -195,91 +207,162 @@ def render_reel(req: TrapRequest):
 
 
 # ==========================================
-# 3. FLYER PIPELINE (/render-flyer)
+# 3. FLYER GENERATION (/render-flyer)
 # ==========================================
 class FlyerRequest(BaseModel):
-    title: str
-    headline: str
-    subtext: str
+    business_name: str = "Vasant Power Laundry"
+    tagline: str = "Crisp • Clean • Express Care"
+    headline: str = "Premium Laundry & Steam Pressing"
+    subheadline: str = "Fast turnaround, hygienic washing, and door-to-door convenience."
+    services: list[str] = [
+        "Wash & Fold",
+        "Steam Ironing / Pressing",
+        "Dry Cleaning Care",
+        "Curtain & Blanket Deep Clean",
+    ]
+    offer_badge: str = "Starting at ₹99 / Month / Plans Available"
+    phone_or_whatsapp: str = "+91 XXXXXXXXXX"
+    address_line: str = "Porbandar, Gujarat"
+    cta_text: str = "Drop Off Today / WhatsApp for Pickup"
+    canvas_size: tuple[int, int] = (1080, 1080)
+
+
+def wrap_lines(draw: ImageDraw.Draw, text: str, font, max_width: int, max_lines: int = 3):
+    words = text.split()
+    lines = []
+    current = ""
+
+    for word in words:
+        test = f"{current} {word}".strip()
+        if draw.textbbox((0, 0), test, font=font)[2] <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+            if len(lines) >= max_lines - 1:
+                break
+
+    if current:
+        lines.append(current)
+
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1]
+        if len(last) > 18:
+            lines[-1] = last[:15] + "..."
+
+    return "\n".join(lines)
+
+
+def draw_service_chip(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int, label: str):
+    draw.rounded_rectangle([(x, y), (x + w, y + h)], radius=16, fill=(240, 250, 252), outline=(0, 168, 150), width=2)
+    draw.text((x + 20, y + h / 2), "✓", fill=(0, 168, 150), anchor="lm", font=get_font(26, bold=True))
+    label_font = get_font(22, bold=True)
+    wrapped = wrap_lines(draw, label, label_font, w - 70, max_lines=2)
+    draw.multiline_text((x + 52, y + 16), wrapped, fill=(15, 41, 66), font=label_font, spacing=2)
+
+
+def generate_flyer_image(req: FlyerRequest) -> Image.Image:
+    width, height = req.canvas_size
+    canvas = Image.new("RGB", (width, height), "#F4F8FB")
+    draw = ImageDraw.Draw(canvas)
+
+    outer_pad = 42
+    card = [(outer_pad, outer_pad), (width - outer_pad, height - outer_pad)]
+    draw.rounded_rectangle(card, radius=34, fill=(255, 255, 255), outline=(199, 218, 232), width=2)
+
+    top_bubble = [(70, 70), (width - 70, 200)]
+    draw.rounded_rectangle(top_bubble, radius=24, fill=(15, 41, 66), outline=(15, 41, 66), width=2)
+    brand_font = get_font(38, bold=True)
+    draw.text((width / 2, 107), req.business_name.upper(), fill=(255, 255, 255), anchor="mm", font=brand_font)
+
+    tagline_font = get_font(18, bold=True)
+    draw.text((width / 2, 150), req.tagline, fill=(123, 181, 214), anchor="mm", font=tagline_font)
+
+    offer_box = [(130, 225), (width - 130, 290)]
+    draw.rounded_rectangle(offer_box, radius=22, fill=(245, 158, 11), outline=(255, 216, 121), width=2)
+    offer_font = get_font(24, bold=True)
+    draw.text((width / 2, 257), req.offer_badge, fill=(255, 255, 255), anchor="mm", font=offer_font)
+
+    hero_panel = [(80, 330), (width - 80, 710)]
+    draw.rounded_rectangle(hero_panel, radius=28, fill=(245, 248, 251), outline=(200, 216, 231), width=2)
+
+    accent_circle = [(760, 350), (980, 570)]
+    draw.ellipse(accent_circle, fill=(2, 132, 199), outline=(0, 117, 180), width=2)
+    icon_font = get_font(54, bold=True)
+    draw.text((870, 460), "24H", fill=(255, 255, 255), anchor="mm", font=icon_font)
+
+    headline_font = get_font(42, bold=True)
+    headline_width = 540
+    headline_text = wrap_lines(draw, req.headline, headline_font, headline_width, max_lines=3)
+    draw.multiline_text((100, 380), headline_text, fill=(15, 41, 66), font=headline_font, spacing=6, align="left")
+
+    subheadline_font = get_font(23, bold=False)
+    subheadline_text = wrap_lines(draw, req.subheadline, subheadline_font, 560, max_lines=4)
+    draw.multiline_text((100, 515), subheadline_text, fill=(37, 66, 90), font=subheadline_font, spacing=4, align="left")
+
+    service_area = [(100, 640), (980, 820)]
+    draw.rounded_rectangle(service_area, radius=26, fill=(255, 255, 255), outline=(214, 231, 239), width=2)
+
+    service_items = req.services[:4]
+    for idx, service in enumerate(service_items):
+        col = idx % 2
+        row = idx // 2
+        x = 130 + (col * 400)
+        y = 670 + (row * 90)
+        draw_service_chip(draw, x, y, 330, 64, service)
+
+    footer_box = [(60, 845), (width - 60, 1010)]
+    draw.rounded_rectangle(footer_box, radius=30, fill=(15, 41, 66), outline=(15, 41, 66), width=2)
+
+    cta_box = [(120, 882), (width - 120, 945)]
+    draw.rounded_rectangle(cta_box, radius=20, fill=(0, 168, 150), outline=(0, 168, 150), width=2)
+    cta_font = get_font(24, bold=True)
+    draw.text((width / 2, 913), req.cta_text.upper(), fill=(255, 255, 255), anchor="mm", font=cta_font)
+
+    footer_font = get_font(20, bold=True)
+    draw.text((width / 2, 968), req.phone_or_whatsapp, fill=(255, 255, 255), anchor="mm", font=footer_font)
+    draw.text((width / 2, 994), req.address_line, fill=(206, 225, 239), anchor="mm", font=get_font(18, bold=False))
+
+    return canvas
 
 
 @app.post("/render-flyer")
 def render_flyer(req: FlyerRequest):
     try:
-        width, height = 1080, 1440
-        canvas = Image.new("RGBA", (width, height), (11, 23, 48, 255))
-        draw = ImageDraw.Draw(canvas)
-
-        draw.rectangle([(32, 32), (width - 32, height - 32)], outline=(200, 155, 65, 220), width=3)
-        draw.rectangle([(44, 44), (width - 44, height - 44)], outline=(140, 105, 45, 120), width=1)
-
-        fan_r = 52
-        draw_corner_fan(draw, (44, 44), fan_r, "TL")
-        draw_corner_fan(draw, (width - 44, 44), fan_r, "TR")
-        draw_corner_fan(draw, (44, height - 44), fan_r, "BL")
-        draw_corner_fan(draw, (width - 44, height - 44), fan_r, "BR")
-
-        plaque_w, plaque_h = 420, 110
-        plaque_x1 = (width - plaque_w) // 2
-        plaque_y1 = 80
-        plaque_box = [(plaque_x1, plaque_y1), (plaque_x1 + plaque_w, plaque_y1 + plaque_h)]
-        draw_notched_card(draw, plaque_box, radius=18, fill=(35, 43, 50, 255), outline=(218, 172, 78, 240), width=2)
-
-        vasant_font = get_font(42, bold=True, serif=True)
-        draw.text((width // 2, plaque_y1 + 42), "VASANT", fill=(245, 204, 110), anchor="mm", font=vasant_font)
-
-        sub_brand_font = get_font(20, bold=True, serif=True)
-        draw.text((width // 2, plaque_y1 + 80), "POWER LAUNDRY", fill=(215, 175, 85), anchor="mm", font=sub_brand_font)
-
-        pill_w, pill_h = 580, 60
-        pill_x1 = (width - pill_w) // 2
-        pill_y1 = 225
-        pill_box = [(pill_x1, pill_y1), (pill_x1 + pill_w, pill_y1 + pill_h)]
-        draw.rounded_rectangle(pill_box, radius=30, fill=(235, 185, 75, 255), outline=(255, 220, 130, 200), width=2)
-
-        pill_tag = f"• {req.title.upper()} •"
-        category_font = get_font(25, bold=True, serif=False)
-        draw.text((width // 2, pill_y1 + pill_h // 2), pill_tag, fill=(11, 23, 48), anchor="mm", font=category_font)
-
-        card_box = [(120, 320), (width - 120, 940)]
-        draw_notched_card(draw, card_box, radius=24, fill=(36, 44, 52, 255), outline=(218, 172, 78, 230), width=3)
-
-        headline_font = get_font(52, bold=True, serif=True)
-        wrapped_headline = textwrap.fill(req.headline, width=22)
-        draw.text((width // 2, 500), wrapped_headline, fill=(255, 255, 255), anchor="mm", font=headline_font, align="center")
-
-        subtext_font = get_font(28, bold=False, serif=False)
-        wrapped_subtext = textwrap.fill(req.subtext, width=34)
-        draw.text((width // 2, 750), wrapped_subtext, fill=(220, 230, 245), anchor="mm", font=subtext_font, align="center")
-
-        badge_y1 = 980
-        badge_h = 160
-        gap = 36
-        badge_w = (width - 240 - gap) // 2
-
-        b1_x1 = 120
-        b1_box = [(b1_x1, badge_y1), (b1_x1 + badge_w, badge_y1 + badge_h)]
-        draw_notched_card(draw, b1_box, radius=18, fill=(33, 40, 48, 255), outline=(218, 172, 78, 220), width=2)
-        badge_font = get_font(24, bold=True, serif=True)
-        b1_text = "100% Pocket\nCustody\nGuarantee"
-        draw.text((b1_x1 + badge_w // 2, badge_y1 + badge_h // 2), b1_text, fill=(245, 204, 110), anchor="mm", font=badge_font, align="center")
-
-        b2_x1 = b1_x1 + badge_w + gap
-        b2_box = [(b2_x1, badge_y1), (b2_x1 + badge_w, badge_y1 + badge_h)]
-        draw_notched_card(draw, b2_box, radius=18, fill=(33, 40, 48, 255), outline=(218, 172, 78, 220), width=2)
-        b2_text = "Smart\nWhatsApp\nSlips"
-        draw.text((b2_x1 + badge_w // 2, badge_y1 + badge_h // 2), b2_text, fill=(245, 204, 110), anchor="mm", font=badge_font, align="center")
-
-        strip_y = height - 100
-        draw.line([(32, strip_y), (width - 32, strip_y)], fill=(190, 145, 60, 180), width=2)
-
-        address_font = get_font(22, bold=False, serif=False)
-        address_text = "Wagheshwari Plot, Porbandar (360575)  |  7 Days Open"
-        draw.text((width // 2, height - 52), address_text, fill=(240, 245, 255), anchor="mm", font=address_font)
-
-        output_path = f"/tmp/{uuid.uuid4().hex[:8]}.png"
-        canvas.convert("RGB").save(output_path, "PNG", quality=95)
-        return FileResponse(output_path, media_type="image/png", filename="vasant_flyer.png")
-
+        image = generate_flyer_image(req)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG", optimize=True)
+        return Response(content=buffer.getvalue(), media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/render-flyer")
+def render_flyer_get(
+    business_name: str = Query(default="Vasant Power Laundry"),
+    tagline: str = Query(default="Crisp • Clean • Express Care"),
+    headline: str = Query(default="Premium Laundry & Steam Pressing"),
+    subheadline: str = Query(default="Fast turnaround, hygienic washing, and door-to-door convenience."),
+    services: str = Query(default="Wash & Fold,Steam Ironing / Pressing,Dry Cleaning Care,Curtain & Blanket Deep Clean"),
+    offer_badge: str = Query(default="Starting at ₹99 / Month / Plans Available"),
+    phone_or_whatsapp: str = Query(default="+91 XXXXXXXXXX"),
+    address_line: str = Query(default="Porbandar, Gujarat"),
+    cta_text: str = Query(default="Drop Off Today / WhatsApp for Pickup"),
+):
+    req = FlyerRequest(
+        business_name=business_name,
+        tagline=tagline,
+        headline=headline,
+        subheadline=subheadline,
+        services=[item.strip() for item in services.split(",") if item.strip()],
+        offer_badge=offer_badge,
+        phone_or_whatsapp=phone_or_whatsapp,
+        address_line=address_line,
+        cta_text=cta_text,
+    )
+    return render_flyer(req)
+
+
+# NOTE: Keep the chess reel route intact for the original social-media video renderer.
