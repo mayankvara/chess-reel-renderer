@@ -17,6 +17,10 @@ from flyer_service import (
     render_business_flyer_image,
     render_chess_quote_image
 )
+from scrabble_service import (
+    ScrabblePostRequest,
+    render_scrabble_post,
+)
 
 app = FastAPI(title="Chess Reel & Flyer Renderer API")
 
@@ -137,4 +141,33 @@ def render_quote_flyer(req: ChessQuoteFlyerRequest):
         return Response(content=png_bytes, media_type="image/png")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Quote flyer rendering error: {str(e)}")
-        
+
+
+# ==========================================
+# Scrabble Post Endpoint
+# ==========================================
+
+@app.post("/render-scrabble-post")
+def render_scrabble_post_route(req: ScrabblePostRequest):
+    try:
+        return render_scrabble_post(req)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Scrabble post rendering error: {str(e)}")
+
+
+@app.get("/render-scrabble-post")
+def render_scrabble_post_get(
+    rack_letters: str = Query("Q, U, I, Z, Z, E, D"),
+    hook_title: str = Query("Can you find a 35-point word?"),
+    points: int = Query(35),
+    hint: str = Query("Uses double Z and Q!"),
+    branding: str = Query("Word Masters Club")
+):
+    req = ScrabblePostRequest(
+        rack_letters=rack_letters,
+        hook_title=hook_title,
+        points=points,
+        hint=hint,
+        branding=branding
+    )
+    return render_scrabble_post(req)
