@@ -25,9 +25,16 @@ def ensure_rgb(img: Image.Image) -> Image.Image:
     return img
 
 
+def safe_round_rect(draw, xy, radius=10, fill=None, outline=None, width=1):
+    try:
+        draw.rounded_rectangle(xy, radius=radius, fill=fill, outline=outline, width=width)
+    except Exception:
+        draw.rectangle(xy, fill=fill, outline=outline, width=width)
+
+
 def safe_rounded_rectangle(draw: ImageDraw.ImageDraw, box, radius: int, **kwargs):
     try:
-        draw.rounded_rectangle(box, radius=radius, **kwargs)
+        safe_round_rect(draw, box, radius=radius, **kwargs)
     except Exception:
         try:
             draw.rectangle(box, **kwargs)
