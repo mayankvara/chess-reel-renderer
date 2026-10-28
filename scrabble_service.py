@@ -19,6 +19,12 @@ LETTER_POINTS = {
 }
 
 
+def ensure_rgb(img: Image.Image) -> Image.Image:
+    if img.mode != "RGB":
+        return img.convert("RGB")
+    return img
+
+
 def safe_rounded_rectangle(draw: ImageDraw.ImageDraw, box, radius: int, **kwargs):
     try:
         draw.rounded_rectangle(box, radius=radius, **kwargs)
@@ -170,7 +176,7 @@ def generate_scrabble_image(req: ScrabblePostRequest):
 
         base = Image.alpha_composite(base, bg)
         base = Image.alpha_composite(base, glow)
-        base = base.convert("RGB")
+        base = ensure_rgb(base)
         draw = ImageDraw.Draw(base)
 
         header_x1, header_y1 = 90, 80
@@ -251,6 +257,7 @@ def generate_scrabble_image(req: ScrabblePostRequest):
         footer_box = safe_textbbox(draw, footer_brand.upper(), footer_font, fallback_size=22)
         draw.text(((width - max(0, footer_box[2] - footer_box[0])) / 2, 970), footer_brand.upper(), fill=(184, 195, 209), font=footer_font)
 
+        base = ensure_rgb(base)
         output = io.BytesIO()
         base.save(output, format="PNG")
         return output.getvalue()
@@ -264,12 +271,14 @@ def generate_scrabble_image(req: ScrabblePostRequest):
             d.text((60, 80), "DAILY SCRABBLE CHALLENGE", fill=(255, 255, 255), font=default_font)
             d.text((60, 140), str(req.hook_title or "Can you find a word?"), fill=(255, 255, 255), font=default_font)
             d.text((60, 220), f"MAX SCORE: {safe_points(req.points)}", fill=(255, 255, 255), font=default_font)
+            fallback = ensure_rgb(fallback)
             out = io.BytesIO()
             fallback.save(out, format="PNG")
             return out.getvalue()
         except Exception:
             traceback.print_exc()
             final = Image.new("RGB", (width, height), (15, 23, 42))
+            final = ensure_rgb(final)
             final_buf = io.BytesIO()
             final.save(final_buf, format="PNG")
             return final_buf.getvalue()
@@ -301,4 +310,3 @@ def render_scrabble_post_get(
         branding=branding,
     )
     return render_scrabble_post(req)
-    
