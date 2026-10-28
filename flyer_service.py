@@ -1,156 +1,238 @@
 import io
 import textwrap
-from fastapi import FastAPI, HTTPException, Query, Response
-from PIL import Image, ImageDraw
+from typing import List, Tuple, Optional
 from pydantic import BaseModel
+from PIL import Image, ImageDraw, ImageFont
 
-app = FastAPI()
 
+# ==========================================
+# 1. Pydantic Models
+# ==========================================
 
-class FlyerRequest(BaseModel):
+class BusinessFlyerRequest(BaseModel):
     business_name: str = "Vasant Power Laundry"
     tagline: str = "Crisp • Clean • Express Care"
     headline: str = "Premium Laundry & Steam Pressing"
     subheadline: str = "Fast turnaround, hygienic washing, and door-to-door convenience."
-    services: list[str] = [
+    services: List[str] = [
         "Wash & Fold",
         "Steam Ironing / Pressing",
         "Dry Cleaning Care",
-        "Curtain & Blanket Deep Clean",
+        "Curtain & Blanket Deep Clean"
     ]
     offer_badge: str = "Starting at ₹99 / Month / Plans Available"
     phone_or_whatsapp: str = "+91 XXXXXXXXXX"
     address_line: str = "Porbandar, Gujarat"
     cta_text: str = "Drop Off Today / WhatsApp for Pickup"
-    canvas_size: tuple[int, int] = (1080, 1080)
+    canvas_size: Tuple[int, int] = (1080, 1080)
 
 
-def get_font(size: int, bold: bool = False):
+class ChessQuoteFlyerRequest(BaseModel):
+    quote: str
+    player: str
+    designation: str = "World Champion"
+    branding: str = "Chess Players Ahmedabad"
+    canvas_size: Tuple[int, int] = (1080, 1080)
+
+
+# ==========================================
+# 2. Font Loading Helper (Render / Linux / Windows Safe)
+# ==========================================
+
+def get_font(size: int, bold: bool = False) -> ImageFont.ImageFont:
+    """
+    Safely resolves system fonts across Render/Ubuntu, Debian, Windows, and macOS.
+    Falls back gracefully without crashing.
+    """
     candidates = [
+        # Linux / Render standard DejaVu paths
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        # Windows standard
+        "C:\\Windows\\Fonts\\arialbd.ttf" if bold else "C:\\Windows\\Fonts\\arial.ttf",
+        # Generic name lookup
         "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
-        "Arial Bold.ttf" if bold else "Arial.ttf",
-        "LiberationSans-Bold.ttf" if bold else "LiberationSans-Regular.ttf",
+        "Arial Bold.ttf" if bold else "Arial.ttf"
     ]
-    for candidate in candidates:
+
+    for path in candidates:
         try:
-            return __import__("PIL").ImageFont.truetype(candidate, size)
-        except Exception:
+            return ImageFont.truetype(path, size)
+        except (IOError, OSError):
             continue
-    return __import__("PIL").ImageFont.load_default()
+
+    # Safe fallback if no true-type font found
+    return ImageFont.load_default()
 
 
-def wrap_lines(draw: ImageDraw.Draw, text: str, font, max_width: int, max_lines: int = 3):
-    words = text.split()
-    lines = []
-    current = ""
+# ==========================================
+# 3. Business Flyer Generator (Vasant Laundry)
+# ==========================================
 
-    for word in words:
-        test = f"{current} {word}".strip()
-        if draw.textbbox((0, 0), test, font=font)[2] <= max_width:
-            current = test
-        else:
-            if current:
-                lines.append(current)
-            current = word
-            if len(lines) >= max_lines - 1:
-                break
-
-    if current:
-        lines.append(current)
-
-    if len(lines) > max_lines:
-        lines = lines[:max_lines]
-        last = lines[-1]
-        if len(last) > 18:
-            lines[-1] = last[:15] + "..."
-
-    return "\n".join(lines)
-
-
-def draw_service_chip(draw: ImageDraw.Draw, x: int, y: int, w: int, h: int, label: str):
-    draw.rounded_rectangle([(x, y), (x + w, y + h)], radius=16, fill=(240, 250, 252), outline=(0, 168, 150), width=2)
-    draw.text((x + 20, y + h / 2), "✓", fill=(0, 168, 150), anchor="lm", font=get_font(26, bold=True))
-    label_font = get_font(22, bold=True)
-    wrapped = wrap_lines(draw, label, label_font, w - 70, max_lines=2)
-    draw.multiline_text((x + 52, y + 16), wrapped, fill=(15, 41, 66), font=label_font, spacing=2)
-
-
-def generate_flyer_image(req: FlyerRequest) -> Image.Image:
+def render_business_flyer_image(req: BusinessFlyerRequest) -> bytes:
     width, height = req.canvas_size
-    canvas = Image.new("RGB", (width, height), "#F4F8FB")
-    draw = ImageDraw.Draw(canvas)
+    img = Image.new("RGB", (width, height), color="#F4F8FB")
+    draw = ImageDraw.Draw(img)
 
-    outer_pad = 42
-    draw.rounded_rectangle([(outer_pad, outer_pad), (width - outer_pad, height - outer_pad)], radius=34, fill=(255, 255, 255), outline=(199, 218, 232), width=2)
+    margin = 50
 
-    draw.rounded_rectangle([(70, 70), (width - 70, 200)], radius=24, fill=(15, 41, 66), outline=(15, 41, 66), width=2)
-    draw.text((width / 2, 107), req.business_name.upper(), fill=(255, 255, 255), anchor="mm", font=get_font(38, bold=True))
-    draw.text((width / 2, 150), req.tagline, fill=(123, 181, 214), anchor="mm", font=get_font(18, bold=True))
+    # Top Brand Header Box
+    header_h = 160
+    draw.rectangle([(0, 0), (width, header_h)], fill="#0F2942")
 
-    draw.rounded_rectangle([(130, 225), (width - 130, 290)], radius=22, fill=(245, 158, 11), outline=(255, 216, 121), width=2)
-    draw.text((width / 2, 257), req.offer_badge, fill=(255, 255, 255), anchor="mm", font=get_font(24, bold=True))
+    brand_font = get_font(46, bold=True)
+    draw.text((margin, 35), req.business_name.upper(), fill="#FFFFFF", font=brand_font)
 
-    draw.rounded_rectangle([(80, 330), (width - 80, 710)], radius=28, fill=(245, 248, 251), outline=(200, 216, 231), width=2)
-    draw.ellipse([(760, 350), (980, 570)], fill=(2, 132, 199), outline=(0, 117, 180), width=2)
-    draw.text((870, 460), "24H", fill=(255, 255, 255), anchor="mm", font=get_font(54, bold=True))
+    tagline_font = get_font(24, bold=False)
+    draw.text((margin, 95), req.tagline, fill="#38BDF8", font=tagline_font)
 
-    headline_font = get_font(42, bold=True)
-    headline_text = wrap_lines(draw, req.headline, headline_font, 540, max_lines=3)
-    draw.multiline_text((100, 380), headline_text, fill=(15, 41, 66), font=headline_font, spacing=6)
+    # Offer Badge Banner
+    if req.offer_badge:
+        badge_y = header_h + 35
+        badge_font = get_font(26, bold=True)
+        draw.rounded_rectangle(
+            [(margin, badge_y), (width - margin, badge_y + 55)],
+            radius=12,
+            fill="#F59E0B"
+        )
+        draw.text((margin + 20, badge_y + 12), req.offer_badge.upper(), fill="#0F172A", font=badge_font)
 
-    subheadline_font = get_font(23, bold=False)
-    subheadline_text = wrap_lines(draw, req.subheadline, subheadline_font, 560, max_lines=4)
-    draw.multiline_text((100, 515), subheadline_text, fill=(37, 66, 90), font=subheadline_font, spacing=4)
+    # Headline & Subheadline
+    content_y = header_h + 125
+    head_font = get_font(44, bold=True)
+    head_lines = textwrap.wrap(req.headline, width=28)
+    for line in head_lines:
+        draw.text((margin, content_y), line, fill="#0F2942", font=head_font)
+        content_y += 55
 
-    draw.rounded_rectangle([(100, 640), (980, 820)], radius=26, fill=(255, 255, 255), outline=(214, 231, 239), width=2)
-    for idx, service in enumerate(req.services[:4]):
-        col = idx % 2
-        row = idx // 2
-        x = 130 + (col * 400)
-        y = 670 + (row * 90)
-        draw_service_chip(draw, x, y, 330, 64, service)
+    content_y += 10
+    sub_font = get_font(24, bold=False)
+    sub_lines = textwrap.wrap(req.subheadline, width=50)
+    for line in sub_lines:
+        draw.text((margin, content_y), line, fill="#475569", font=sub_font)
+        content_y += 35
 
-    draw.rounded_rectangle([(60, 845), (width - 60, 1010)], radius=30, fill=(15, 41, 66), outline=(15, 41, 66), width=2)
-    draw.rounded_rectangle([(120, 882), (width - 120, 945)], radius=20, fill=(0, 168, 150), outline=(0, 168, 150), width=2)
-    draw.text((width / 2, 913), req.cta_text.upper(), fill=(255, 255, 255), anchor="mm", font=get_font(24, bold=True))
-    draw.text((width / 2, 968), req.phone_or_whatsapp, fill=(255, 255, 255), anchor="mm", font=get_font(20, bold=True))
-    draw.text((width / 2, 994), req.address_line, fill=(206, 225, 239), anchor="mm", font=get_font(18, bold=False))
+    # Services Checklist
+    content_y += 20
+    draw.text((margin, content_y), "OUR POPULAR SERVICES", fill="#00A896", font=get_font(26, bold=True))
+    content_y += 45
 
-    return canvas
+    svc_font = get_font(28, bold=True)
+    for svc in req.services:
+        draw.text((margin + 10, content_y), "✓", fill="#00A896", font=svc_font)
+        draw.text((margin + 45, content_y), svc, fill="#1E293B", font=svc_font)
+        content_y += 48
 
+    # Bottom Footer Card
+    footer_h = 170
+    footer_top = height - footer_h
+    draw.rectangle([(0, footer_top), (width, height)], fill="#0F2942")
 
-@app.post("/render-flyer")
-def render_flyer(req: FlyerRequest):
-    try:
-        image = generate_flyer_image(req)
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG", optimize=True)
-        return Response(content=buffer.getvalue(), media_type="image/png")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/render-flyer")
-def render_flyer_get(
-    business_name: str = Query(default="Vasant Power Laundry"),
-    tagline: str = Query(default="Crisp • Clean • Express Care"),
-    headline: str = Query(default="Premium Laundry & Steam Pressing"),
-    subheadline: str = Query(default="Fast turnaround, hygienic washing, and door-to-door convenience."),
-    services: str = Query(default="Wash & Fold,Steam Ironing / Pressing,Dry Cleaning Care,Curtain & Blanket Deep Clean"),
-    offer_badge: str = Query(default="Starting at ₹99 / Month / Plans Available"),
-    phone_or_whatsapp: str = Query(default="+91 XXXXXXXXXX"),
-    address_line: str = Query(default="Porbandar, Gujarat"),
-    cta_text: str = Query(default="Drop Off Today / WhatsApp for Pickup"),
-):
-    req = FlyerRequest(
-        business_name=business_name,
-        tagline=tagline,
-        headline=headline,
-        subheadline=subheadline,
-        services=[item.strip() for item in services.split(",") if item.strip()],
-        offer_badge=offer_badge,
-        phone_or_whatsapp=phone_or_whatsapp,
-        address_line=address_line,
-        cta_text=cta_text,
+    # CTA Button
+    cta_font = get_font(26, bold=True)
+    cta_bbox = draw.textbbox((0, 0), req.cta_text, font=cta_font)
+    cta_w = cta_bbox[2] - cta_bbox[0]
+    draw.rounded_rectangle(
+        [(margin, footer_top + 25), (margin + cta_w + 40, footer_top + 80)],
+        radius=14,
+        fill="#00A896"
     )
-    return render_flyer(req)
+    draw.text((margin + 20, footer_top + 38), req.cta_text, fill="#FFFFFF", font=cta_font)
+
+    # Contact & Address
+    contact_font = get_font(26, bold=True)
+    addr_font = get_font(22, bold=False)
+    draw.text((margin, footer_top + 98), f"📞 {req.phone_or_whatsapp}", fill="#F8FAFC", font=contact_font)
+    draw.text((margin + 360, footer_top + 101), f"📍 {req.address_line}", fill="#94A3B8", font=addr_font)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", quality=95)
+    return buf.getvalue()
+
+
+# ==========================================
+# 4. Chess Master Quote Flyer Generator
+# ==========================================
+
+def render_chess_quote_image(req: ChessQuoteFlyerRequest) -> bytes:
+    width, height = req.canvas_size
+    img = Image.new("RGB", (width, height), color="#0F172A")  # Slate dark background
+    draw = ImageDraw.Draw(img)
+
+    margin = 48
+    draw.rounded_rectangle(
+        [(margin, margin), (width - margin, height - margin)],
+        radius=24,
+        outline="#334155",
+        width=3
+    )
+
+    # Decorative Quotation Mark
+    quote_mark_font = get_font(180, bold=True)
+    draw.text((margin + 40, margin + 20), "“", fill="#F59E0B", font=quote_mark_font)
+
+    # Auto-adjust Quote Font Size
+    quote_clean = req.quote.strip('“”"')
+    font_size = 56 if len(quote_clean) < 95 else 44
+    font_quote = get_font(font_size, bold=True)
+
+    wrap_width = 28 if font_size == 56 else 34
+    lines = textwrap.wrap(quote_clean, width=wrap_width)
+    wrapped_text = "\n".join(f'"{line}' if i == 0 else line for i, line in enumerate(lines))
+    if not wrapped_text.endswith('"'):
+        wrapped_text += '"'
+
+    bbox = draw.multiline_textbbox((0, 0), wrapped_text, font=font_quote, spacing=18)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    quote_x = (width - text_w) // 2
+    quote_y = 360 - (text_h // 3)
+
+    draw.multiline_text(
+        (quote_x, quote_y),
+        wrapped_text,
+        fill="#FFFFFF",
+        font=font_quote,
+        spacing=18,
+        align="center"
+    )
+
+    # Author & Accent Line
+    author_y = quote_y + text_h + 70
+    line_w = 80
+    draw.line(
+        [((width - line_w) // 2, author_y), ((width + line_w) // 2, author_y)],
+        fill="#F59E0B",
+        width=4
+    )
+
+    font_author = get_font(40, bold=True)
+    author_name = req.player.upper()
+    abbox = draw.textbbox((0, 0), author_name, font=font_author)
+    draw.text(((width - (abbox[2] - abbox[0])) // 2, author_y + 24), author_name, fill="#FBBF24", font=font_author)
+
+    if req.designation:
+        font_desig = get_font(26, bold=False)
+        dbbox = draw.textbbox((0, 0), req.designation, font=font_desig)
+        draw.text(((width - (dbbox[2] - dbbox[0])) // 2, author_y + 76), req.designation, fill="#94A3B8", font=font_desig)
+
+    # Footer Branding Tag
+    font_brand = get_font(26, bold=True)
+    brand_text = f"♟ {req.branding.upper()} • DAILY INSPIRATION"
+    bbbox = draw.textbbox((0, 0), brand_text, font=font_brand)
+    bw, bh = bbbox[2] - bbbox[0], bbbox[3] - bbbox[1]
+
+    pill_y = height - margin - 75
+    draw.rounded_rectangle(
+        [((width - bw) // 2 - 24, pill_y - 8), ((width + bw) // 2 + 24, pill_y + bh + 8)],
+        radius=14,
+        fill="#1E293B"
+    )
+    draw.text(((width - bw) // 2, pill_y), brand_text, fill="#E2E8F0", font=font_brand)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", quality=95)
+    return buf.getvalue()
+    
