@@ -2,6 +2,7 @@ import os
 import io
 import tempfile
 from typing import List, Optional
+
 from fastapi import FastAPI, Response, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -15,7 +16,11 @@ from flyer_service import (
     BusinessFlyerRequest,
     ChessQuoteFlyerRequest,
     render_business_flyer_image,
-    render_chess_quote_image
+    render_chess_quote_image,
+)
+from laundry_flyer_service import (
+    LaundryFlyerRequest,
+    generate_laundry_flyer,
 )
 from scrabble_service import (
     ScrabblePostRequest,
@@ -25,20 +30,12 @@ from scrabble_service import (
 app = FastAPI(title="Chess Reel & Flyer Renderer API")
 
 
-# ==========================================
-# Reel Request Schema
-# ==========================================
-
 class ReelRequest(BaseModel):
     title: str = "Chess Tactics"
     moves: List[str]
     fontSize: Optional[int] = 30
     readStyle: Optional[str] = "short"
 
-
-# ==========================================
-# Reel Generator Endpoint
-# ==========================================
 
 @app.post("/render")
 def render_reel(req: ReelRequest):
@@ -50,13 +47,11 @@ def render_reel(req: ReelRequest):
     frame_paths = []
 
     try:
-        # Initial starting position
         svg_start = chess.svg.board(board=board, size=720)
         start_frame_path = os.path.join(temp_dir, "frame_000.png")
         cairosvg.svg2png(bytestring=svg_start.encode("utf-8"), write_to=start_frame_path)
         frame_paths.append(start_frame_path)
 
-        # Generate each move with arrow highlights
         for idx, uci_move in enumerate(req.moves):
             try:
                 move = chess.Move.from_uci(uci_move)
@@ -76,13 +71,11 @@ def render_reel(req: ReelRequest):
         if not frame_paths:
             raise HTTPException(status_code=500, detail="Failed to render move frames.")
 
-        # Hold final frame longer
         frame_paths.extend([frame_paths[-1]] * 3)
 
         output_video_path = os.path.join(temp_dir, "chess_reel.mp4")
         clip = ImageSequenceClip(frame_paths, fps=1.2)
 
-        # Attach move sound if present
         if os.path.exists("move.wav"):
             try:
                 audio = AudioFileClip("move.wav")
@@ -97,7 +90,7 @@ def render_reel(req: ReelRequest):
             fps=24,
             preset="ultrafast",
             threads=2,
-            logger=None
+            logger=None,
         )
 
         return FileResponse(output_video_path, media_type="video/mp4", filename=f"{req.title}.mp4")
@@ -105,10 +98,6 @@ def render_reel(req: ReelRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# ==========================================
-# Business Flyer Endpoints (Vasant Laundry)
-# ==========================================
 
 @app.post("/render-flyer")
 def render_business_flyer(req: BusinessFlyerRequest):
@@ -130,9 +119,41 @@ def render_business_flyer_get(
     return Response(content=png_bytes, media_type="image/png")
 
 
-# ==========================================
-# Chess Quote Flyer Endpoint (Master Quotes Sheet)
-# ==========================================
+@app.post("/render-laundry-flyer")
+def render_laundry_flyer(req: LaundryFlyerRequest):
+    try:
+        png_bytes = generate_laundry_flyer(req)
+        return Response(content=png_bytes, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Laundry flyer rendering error: {str(e)}")
+
+
+@app.get("/render-laundry-flyer")
+def render_laundry_flyer_get(
+    tip_number: int = Query(1),
+    category: str = Query("Laundry Care"),
+    headline: str = Query("Smarter washing, fresher clothes"),
+    body_text: str = Query(
+        "Separate colors from whites, treat stains before washing, and keep loads balanced for cleaner results and longer-lasting fabrics."
+    ),
+    pro_takeaway: str = Query(
+        "Pro tip: Pre-sort by fabric and color before loading to cut wear, save time, and get a better finish."
+    ),
+    brand_name: str = Query("Vasant Power Laundry"),
+    brand_tagline: str = Query("Crisp • Clean • Express Care"),
+):
+    req = LaundryFlyerRequest(
+        tip_number=tip_number,
+        category=category,
+        headline=headline,
+        body_text=body_text,
+        pro_takeaway=pro_takeaway,
+        brand_name=brand_name,
+        brand_tagline=brand_tagline,
+    )
+    png_bytes = generate_laundry_flyer(req)
+    return Response(content=png_bytes, media_type="image/png")
+
 
 @app.post("/render-quote-flyer")
 def render_quote_flyer(req: ChessQuoteFlyerRequest):
@@ -142,10 +163,6 @@ def render_quote_flyer(req: ChessQuoteFlyerRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Quote flyer rendering error: {str(e)}")
 
-
-# ==========================================
-# Scrabble Post Endpoint
-# ==========================================
 
 @app.post("/render-scrabble-post")
 def render_scrabble_post_route(req: ScrabblePostRequest):
