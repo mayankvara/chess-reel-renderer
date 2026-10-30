@@ -133,13 +133,10 @@ def _clean_logo_transparency(logo_img: Image.Image) -> Image.Image:
     data = rgba.getdata()
     new_data = []
     for item in data:
-        # If pixel is dark/grey (background), make it 100% transparent
-        # item is (R, G, B, A)
         brightness = (item[0] + item[1] + item[2]) // 3
         if brightness < 110:
             new_data.append((255, 255, 255, 0))
         else:
-            # Keep bright white logo mark and text crisp
             new_data.append((255, 255, 255, item[3]))
     rgba.putdata(new_data)
     return rgba
@@ -180,39 +177,22 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
     project_root = os.path.dirname(os.path.abspath(__file__))
     canvas_w, canvas_h = 1080, 1350
 
-   # 1. Scale logo slightly larger for balanced branding
+    # 1. Solid High-Contrast Base Canvas
+    canvas = Image.new("RGB", (canvas_w, canvas_h), (11, 27, 53))
+    draw = ImageDraw.Draw(canvas)
+
+    # 2. Header Accent Area
+    draw.rectangle([(0, 0), (canvas_w, 200)], fill=(16, 38, 74))
+
+    # 3. Logo (Transparent Mask Paste & Scaled)
     logo_path = os.path.join(project_root, "assets", "logo", "logo_vasant_white.png")
     if os.path.exists(logo_path):
         try:
             with Image.open(logo_path) as logo:
                 cleaned_logo = _clean_logo_transparency(logo)
-                # Scale up from 360 to 460px wide
                 cleaned_logo.thumbnail((460, 115), Image.Resampling.LANCZOS)
                 logo_x = (canvas_w - cleaned_logo.width) // 2
                 canvas.paste(cleaned_logo, (logo_x, 48), mask=cleaned_logo.split()[3])
-        except Exception as e:
-            print(f"Warning: logo failed to load: {e}")
-
-    # 2. Fix missing glyph boxes in contact bar
-    footer_h = 140
-    footer_y = canvas_h - footer_h
-    draw.rectangle([(0, footer_y), (canvas_w, canvas_h)], fill=(7, 18, 36))
-
-    # Clean text without unsupported emoji glyphs
-    contact_text = f"+91 {payload.phone_number.replace('+91', '').strip()}   •   {payload.location.upper()}"
-    bbox = draw.textbbox((0, 0), contact_text, font=contact_font)
-    contact_w = bbox[2] - bbox[0]
-    draw.text(((canvas_w - contact_w) // 2, canvas_h - 85), contact_text, fill=(210, 225, 255), font=contact_font)
-
-    # 3. Logo with dark background removal
-    logo_path = os.path.join(project_root, "assets", "logo", "logo_vasant_white.png")
-    if os.path.exists(logo_path):
-        try:
-            with Image.open(logo_path) as logo:
-                cleaned_logo = _clean_logo_transparency(logo)
-                cleaned_logo.thumbnail((360, 90), Image.Resampling.LANCZOS)
-                logo_x = (canvas_w - cleaned_logo.width) // 2
-                canvas.paste(cleaned_logo, (logo_x, 55), mask=cleaned_logo.split()[3])
         except Exception as e:
             print(f"Warning: logo failed to load: {e}")
 
@@ -247,14 +227,12 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
     card_x = (canvas_w - card_w) // 2
     card_y = 440
 
-    # Draw rounded container card
     draw.rounded_rectangle(
         [(card_x, card_y), (card_x + card_w, card_y + card_h)],
         radius=24,
         fill=(255, 255, 255)
     )
 
-    # Scale art slightly inside the card border
     inner_w, inner_h = card_w - 24, card_h - 24
     art_resized = art.convert("RGB").resize((inner_w, inner_h), Image.Resampling.LANCZOS)
     canvas.paste(art_resized, (card_x + 12, card_y + 12))
@@ -280,7 +258,9 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
     if not contact_font:
         contact_font = ImageFont.load_default()
 
-    contact_text = f"📞 {payload.phone_number}    📍 {payload.location}"
+    # Clean text to eliminate [NO GLYPH] boxes
+    raw_phone = payload.phone_number.replace("+91", "").strip()
+    contact_text = f"+91 {raw_phone}    •    {payload.location.upper()}"
     bbox = draw.textbbox((0, 0), contact_text, font=contact_font)
     contact_w = bbox[2] - bbox[0]
     draw.text(((canvas_w - contact_w) // 2, canvas_h - 85), contact_text, fill=(210, 225, 255), font=contact_font)
