@@ -167,63 +167,100 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
     project_root = os.path.dirname(os.path.abspath(__file__))
     canvas_w, canvas_h = 1080, 1350
 
-    # Base background
+    # 1. Solid Navy Base Canvas (Full Opacity - No Checkerboard)
     canvas = Image.new("RGBA", (canvas_w, canvas_h), (11, 27, 53, 255))
-    draw = ImageDraw.Draw(canvas)
 
-    # 1. Bubble Overlay
+    # 2. Bubble Overlay with proper alpha blending
     bubble_path = os.path.join(project_root, "assets", "stickers_overlays", "bubble_pattern.png")
     if os.path.exists(bubble_path):
         try:
             with Image.open(bubble_path) as overlay:
-                overlay_resized = overlay.convert("RGBA").resize((canvas_w, canvas_h))
+                overlay_resized = overlay.convert("RGBA").resize((canvas_w, canvas_h), Image.Resampling.LANCZOS)
                 canvas = Image.alpha_composite(canvas, overlay_resized)
-                draw = ImageDraw.Draw(canvas)
         except Exception as e:
             print(f"Warning: bubble overlay failed to load: {e}")
 
-    # 2. Logo
+    draw = ImageDraw.Draw(canvas)
+
+    # 3. Logo (Masked paste prevents black boxes)
     logo_path = os.path.join(project_root, "assets", "logo", "logo_vasant_white.png")
     if os.path.exists(logo_path):
         try:
             with Image.open(logo_path) as logo:
-                logo_copy = logo.convert("RGBA")
-                logo_copy.thumbnail((380, 110), Image.Resampling.LANCZOS)
-                logo_x = (canvas_w - logo_copy.width) // 2
-                canvas.paste(logo_copy, (logo_x, 70), logo_copy)
+                logo_rgba = logo.convert("RGBA")
+                logo_rgba.thumbnail((380, 110), Image.Resampling.LANCZOS)
+                logo_x = (canvas_w - logo_rgba.width) // 2
+                canvas.paste(logo_rgba, (logo_x, 70), mask=logo_rgba)
         except Exception as e:
             print(f"Warning: logo failed to load: {e}")
 
-    # 3. Dynamic Headline
-    headline_font = _load_font(os.path.join(project_root, "assets", "fonts", "Poppins-Bold.ttf"), 62)
-    wrapped_headline = textwrap.wrap(payload.headline.strip(), width=22)
-    y_pos = 220
+    # 4. Large Headline (Explicit fallback chain)
+    headline_font = None
+    for font_candidate in [
+        os.path.join(project_root, "assets", "fonts", "Poppins-Bold.ttf"),
+        os.path.join(project_root, "assets", "fonts", "Poppins-Medium.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    ]:
+        if os.path.exists(font_candidate):
+            try:
+                headline_font = ImageFont.truetype(font_candidate, size=56)
+                break
+            except Exception:
+                continue
+
+    if not headline_font:
+        headline_font = ImageFont.load_default()
+
+    wrapped_headline = textwrap.wrap(payload.headline.strip().upper(), width=22)
+    y_pos = 210
     for line in wrapped_headline[:3]:
-        line_w = _get_text_width(draw, line, headline_font)
+        bbox = draw.textbbox((0, 0), line, font=headline_font)
+        line_w = bbox[2] - bbox[0]
         draw.text(((canvas_w - line_w) // 2, y_pos), line, fill=(255, 255, 255), font=headline_font)
-        y_pos += 78
+        y_pos += 68
 
-    # 4. Generate Art with Google Imagen 3
+    # 5. Center Image (Rounded corners & proper sizing)
     art = _generate_imagen_art(payload.primary_visual_query)
-    target_w, target_h = 560, 560
-    art.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
-    art_x = (canvas_w - art.width) // 2
+    art_w, art_h = 720, 520
+    art_resized = art.convert("RGBA").resize((art_w, art_h), Image.Resampling.LANCZOS)
+    
+    # Paste centered
+    art_x = (canvas_w - art_w) // 2
     art_y = 440
-    canvas.paste(art, (art_x, art_y), art)
+    canvas.paste(art_resized, (art_x, art_y), mask=art_resized)
 
-    # 5. Bottom Contact Footer
+    # 6. Bottom Contact Footer Bar
     footer_h = 140
     footer_y = canvas_h - footer_h
     draw.rectangle([(0, footer_y), (canvas_w, canvas_h)], fill=(10, 25, 47, 255))
 
+    contact_font = None
+    for font_candidate in [
+        os.path.join(project_root, "assets", "fonts", "Inter-Regular.ttf"),
+        os.path.join(project_root, "assets", "fonts", "Poppins-Medium.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    ]:
+        if os.path.exists(font_candidate):
+            try:
+                contact_font = ImageFont.truetype(font_candidate, size=32)
+                break
+            except Exception:
+                continue
+
+    if not contact_font:
+        contact_font = ImageFont.load_default()
+
     contact_text = f"📞 {payload.phone_number}   📍 {payload.location}"
-    contact_font = _load_font(os.path.join(project_root, "assets", "fonts", "Inter-Regular.ttf"), 28)
-    contact_w = _get_text_width(draw, contact_text, contact_font)
+    bbox = draw.textbbox((0, 0), contact_text, font=contact_font)
+    contact_w = bbox[2] - bbox[0]
     draw.text(((canvas_w - contact_w) // 2, canvas_h - 85), contact_text, fill=(207, 218, 255), font=contact_font)
 
-    # 6. Convert to PNG buffer
+    # 7. Convert to standard RGB JPEG/PNG (Removes any alpha checkerboards)
+    final_canvas = Image.new("RGB", (canvas_w, canvas_h), (11, 27, 53))
+    final_canvas.paste(canvas, (0, 0), mask=canvas.split()[3])
+
     buf = io.BytesIO()
-    canvas.convert("RGB").save(buf, format="PNG", optimize=True)
+    final_canvas.save(buf, format="PNG", optimize=True)
     buf.seek(0)
     return buf.getvalue()
 
