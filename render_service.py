@@ -63,22 +63,6 @@ def root() -> Dict[str, str]:
 @app.get("/debug")
 def run_system_diagnostics() -> Dict[str, Any]:
     project_root = os.path.dirname(os.path.abspath(__file__))
-    gemini_key = os.getenv("GEMINI_API_KEY")
-
-    gemini_status: Dict[str, Any] = {
-        "key_present": bool(gemini_key),
-        "key_prefix": gemini_key[:7] + "..." if gemini_key else None,
-        "api_live_check": "not_tested",
-    }
-
-    if gemini_key:
-        try:
-            client = genai.Client(api_key=gemini_key)
-            # Lightweight check using models API
-            client.models.get(model="imagen-3.0-generate-002")
-            gemini_status["api_live_check"] = "SUCCESS (Gemini Key valid & Imagen-3 active)"
-        except Exception as exc:
-            gemini_status["api_live_check"] = f"FAILED: {str(exc)}"
 
     expected_files = [
         "assets/logo/logo_vasant_white.png",
@@ -110,21 +94,14 @@ def run_system_diagnostics() -> Dict[str, Any]:
         if not exists:
             missing_files.append(file_path)
 
-    is_ready = (
-        gemini_status["key_present"]
-        and "SUCCESS" in gemini_status["api_live_check"]
-        and len(missing_files) == 0
-    )
-
     return {
-        "status": "READY" if is_ready else "CONFIG_ISSUES_FOUND",
+        "status": "READY" if len(missing_files) == 0 else "CONFIG_ISSUES_FOUND",
         "working_directory": project_root,
-        "gemini": gemini_status,
+        "engine": "Pollinations FLUX.1 (Direct)",
         "missing_assets_count": len(missing_files),
         "missing_assets": missing_files,
         "all_assets": assets_check,
     }
-
 
 def _load_font(font_path: str, size: int) -> ImageFont.ImageFont:
     """Safely loads TrueType fonts with fallback to Poppins or system default."""
