@@ -8,3 +8,4 @@ pydantic
 imageio-ffmpeg
 openai
 requests
+google-genai
