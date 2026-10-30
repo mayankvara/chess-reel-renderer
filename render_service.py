@@ -127,36 +127,51 @@ def _get_text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageF
     except Exception:
         return len(text) * 12
 
+def _clean_logo_transparency(logo_img: Image.Image) -> Image.Image:
+    """Removes dark/grey rectangular background from logo without needing Photoshop."""
+    rgba = logo_img.convert("RGBA")
+    data = rgba.getdata()
+    new_data = []
+    for item in data:
+        # If pixel is dark/grey (background), make it 100% transparent
+        # item is (R, G, B, A)
+        brightness = (item[0] + item[1] + item[2]) // 3
+        if brightness < 110:
+            new_data.append((255, 255, 255, 0))
+        else:
+            # Keep bright white logo mark and text crisp
+            new_data.append((255, 255, 255, item[3]))
+    rgba.putdata(new_data)
+    return rgba
+    
 def _generate_imagen_art(prompt_query: str) -> Image.Image:
-    """
-    Generates visual artwork with an automatic fallback to ensure
-    the service never fails with 402 or 500 errors.
-    """
     refined_prompt = (
         f"{prompt_query}, "
-        "commercial laundry and dry cleaning advertising photo, modern clean storefront, "
-        "folded white garments, steam press, minimalist studio lighting, 8k resolution, "
-        "no vehicles, no cartoons, strictly no text, no watermarks"
+        "crisp folded white hotel linens, steam iron, wicker laundry basket, "
+        "bright warm luxury boutique interior, high-end commercial advertising photo, "
+        "professional studio lighting, 8k resolution, ultra-clean, "
+        "no buses, no vans, no cars, strictly no text, no watermarks, no logos"
     )
     encoded_prompt = urllib.parse.quote(refined_prompt)
+    
+    # Adding nologo=true and a new seed prevents watermarking and vehicle outputs
     pollinations_url = (
         f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-        f"?width=768&height=768&model=turbo&nologo=true&seed=101"
+        f"?width=800&height=600&model=turbo&nologo=true&seed=884"
     )
     
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     
     try:
         req = urllib.request.Request(pollinations_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=25) as response:
+        with urllib.request.urlopen(req, timeout=30) as response:
             raw_bytes = response.read()
     except Exception as exc:
-        print(f"Pollinations generation failed ({exc}). Using curated high-res fallback graphic.")
-        # 2. Reliable royalty-free laundry hero image fallback
+        print(f"Pollinations fetch failed: {exc}. Using stock hero fallback.")
         fallback_url = "https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=800&q=80"
         req = urllib.request.Request(fallback_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as fb_response:
-            raw_bytes = fb_response.read()
+        with urllib.request.urlopen(req, timeout=15) as fb_res:
+            raw_bytes = fb_res.read()
 
     return Image.open(io.BytesIO(raw_bytes)).convert("RGBA")
     
@@ -172,20 +187,15 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
     # 2. Subtle Header Accent Area
     draw.rectangle([(0, 0), (canvas_w, 200)], fill=(16, 38, 74))
 
-    # 3. Logo (Masked alpha paste)
+    # 3. Logo with dark background removal
     logo_path = os.path.join(project_root, "assets", "logo", "logo_vasant_white.png")
     if os.path.exists(logo_path):
         try:
             with Image.open(logo_path) as logo:
-                logo_rgba = logo.convert("RGBA")
-                logo_rgba.thumbnail((360, 95), Image.Resampling.LANCZOS)
-                
-                # If logo has dark baked background, clean near-black pixels
-                r, g, b, a = logo_rgba.split()
-                # Create mask from alpha channel
-                mask = a
-                logo_x = (canvas_w - logo_rgba.width) // 2
-                canvas.paste(logo_rgba, (logo_x, 50), mask=mask)
+                cleaned_logo = _clean_logo_transparency(logo)
+                cleaned_logo.thumbnail((360, 90), Image.Resampling.LANCZOS)
+                logo_x = (canvas_w - cleaned_logo.width) // 2
+                canvas.paste(cleaned_logo, (logo_x, 55), mask=cleaned_logo.split()[3])
         except Exception as e:
             print(f"Warning: logo failed to load: {e}")
 
