@@ -8,9 +8,12 @@ import urllib.request
 
 from fastapi import FastAPI, Response, HTTPException, Query
 from fastapi.responses import FileResponse
-from openai import OpenAI
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
+
+# Google Gen AI SDK for Imagen 3
+from google import genai
+from google.genai import types
 
 import chess
 import chess.svg
@@ -59,21 +62,22 @@ def root() -> Dict[str, str]:
 @app.get("/debug")
 def run_system_diagnostics() -> Dict[str, Any]:
     project_root = os.path.dirname(os.path.abspath(__file__))
-    openai_key = os.getenv("OPENAI_API_KEY")
+    gemini_key = os.getenv("GEMINI_API_KEY")
 
-    openai_status: Dict[str, Any] = {
-        "key_present": bool(openai_key),
-        "key_prefix": openai_key[:7] + "..." if openai_key else None,
+    gemini_status: Dict[str, Any] = {
+        "key_present": bool(gemini_key),
+        "key_prefix": gemini_key[:7] + "..." if gemini_key else None,
         "api_live_check": "not_tested",
     }
 
-    if openai_key:
+    if gemini_key:
         try:
-            client = OpenAI(api_key=openai_key)
-            client.models.list()
-            openai_status["api_live_check"] = "SUCCESS (Key valid & active)"
+            client = genai.Client(api_key=gemini_key)
+            # Lightweight check using models API
+            client.models.get(model="imagen-3.0-generate-002")
+            gemini_status["api_live_check"] = "SUCCESS (Gemini Key valid & Imagen-3 active)"
         except Exception as exc:
-            openai_status["api_live_check"] = f"FAILED: {str(exc)}"
+            gemini_status["api_live_check"] = f"FAILED: {str(exc)}"
 
     expected_files = [
         "assets/logo/logo_vasant_white.png",
@@ -106,15 +110,15 @@ def run_system_diagnostics() -> Dict[str, Any]:
             missing_files.append(file_path)
 
     is_ready = (
-        openai_status["key_present"]
-        and "SUCCESS" in openai_status["api_live_check"]
+        gemini_status["key_present"]
+        and "SUCCESS" in gemini_status["api_live_check"]
         and len(missing_files) == 0
     )
 
     return {
         "status": "READY" if is_ready else "CONFIG_ISSUES_FOUND",
         "working_directory": project_root,
-        "openai": openai_status,
+        "gemini": gemini_status,
         "missing_assets_count": len(missing_files),
         "missing_assets": missing_files,
         "all_assets": assets_check,
@@ -128,7 +132,6 @@ def _load_font(font_path: str, size: int) -> ImageFont.ImageFont:
             return ImageFont.truetype(font_path, size=size)
         except Exception:
             pass
-    # Fallback to Poppins-Medium if Inter is missing/corrupt
     alt_font = os.path.join(os.path.dirname(font_path), "Poppins-Medium.ttf")
     if os.path.exists(alt_font):
         try:
@@ -147,11 +150,44 @@ def _get_text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageF
         return len(text) * 12
 
 
+def _generate_imagen_art(prompt_query: str) -> Image.Image:
+    """Generates central artwork via Google Imagen 3."""
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        raise ValueError("GEMINI_API_KEY environment variable is not configured.")
+
+    client = genai.Client(api_key=gemini_key)
+
+    refined_prompt = (
+        f"{prompt_query}. "
+        "Flat modern vector art, clean commercial advertising style, "
+        "vibrant solid turquoise background, centered subject, completely isolated, "
+        "STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO NUMBERS."
+    )
+
+    response = client.models.generate_images(
+        model="imagen-3.0-generate-002",
+        prompt=refined_prompt,
+        config=types.GenerateImagesConfig(
+            number_of_images=1,
+            aspect_ratio="1:1",
+            safety_filter_level="BLOCK_MEDIUM_AND_ABOVE",
+            person_generation="ALLOW_ADULT",
+        ),
+    )
+
+    if not response.generated_images:
+        raise ValueError("Google Imagen 3 returned no images.")
+
+    raw_bytes = response.generated_images[0].image.image_bytes
+    return Image.open(io.BytesIO(raw_bytes)).convert("RGBA")
+
+
 def _render_dynamic_post(payload: PostPayload) -> bytes:
     project_root = os.path.dirname(os.path.abspath(__file__))
     canvas_w, canvas_h = 1080, 1350
 
-    # Direct RGB background to conserve RAM on 512MB limit
+    # Base background
     canvas = Image.new("RGBA", (canvas_w, canvas_h), (11, 27, 53, 255))
     draw = ImageDraw.Draw(canvas)
 
@@ -187,43 +223,15 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
         draw.text(((canvas_w - line_w) // 2, y_pos), line, fill=(255, 255, 255), font=headline_font)
         y_pos += 78
 
-    # 4. Generate AI Artwork using DALL-E 2
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not configured.")
+    # 4. Generate Art with Google Imagen 3
+    art = _generate_imagen_art(payload.primary_visual_query)
+    target_w, target_h = 560, 560
+    art.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+    art_x = (canvas_w - art.width) // 2
+    art_y = 440
+    canvas.paste(art, (art_x, art_y), art)
 
-    client = OpenAI(api_key=openai_key)
-    response = client.images.generate(
-        model="dall-e-3",
-        prompt=(
-            f"{payload.primary_visual_query}. "
-            "Clean commercial advertising illustration, "
-            "no text, no letters, no logos, centered composition."
-        ),
-        size="1024x1024",
-        quality="standard",
-        n=1,
-    )
-
-    image_data = response.data[0]
-    if getattr(image_data, "url", None):
-        req = urllib.request.Request(image_data.url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=45) as remote_image:
-            art_bytes = remote_image.read()
-    elif getattr(image_data, "b64_json", None):
-        art_bytes = base64.b64decode(image_data.b64_json)
-    else:
-        raise ValueError("DALL-E 2 returned no valid URL or base64 data.")
-
-    # 5. Composite Art
-    with Image.open(io.BytesIO(art_bytes)) as art:
-        art_rgba = art.convert("RGBA")
-        art_rgba.thumbnail((560, 560), Image.Resampling.LANCZOS)
-        art_x = (canvas_w - art_rgba.width) // 2
-        art_y = 440
-        canvas.paste(art_rgba, (art_x, art_y), art_rgba)
-
-    # 6. Bottom Contact Footer
+    # 5. Bottom Contact Footer
     footer_h = 140
     footer_y = canvas_h - footer_h
     draw.rectangle([(0, footer_y), (canvas_w, canvas_h)], fill=(10, 25, 47, 255))
@@ -233,7 +241,7 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
     contact_w = _get_text_width(draw, contact_text, contact_font)
     draw.text(((canvas_w - contact_w) // 2, canvas_h - 85), contact_text, fill=(207, 218, 255), font=contact_font)
 
-    # 7. Convert to RGB PNG buffer
+    # 6. Convert to PNG buffer
     buf = io.BytesIO()
     canvas.convert("RGB").save(buf, format="PNG", optimize=True)
     buf.seek(0)
@@ -252,4 +260,91 @@ def render_post(payload: PostPayload) -> Response:
     except Exception as exc:
         print(f"Render Error Trace: {repr(exc)}")
         raise HTTPException(status_code=500, detail=f"Poster rendering error: {str(exc)}")
-        
+
+
+class ReelRequest(BaseModel):
+    title: str = "Chess Tactics"
+    moves: List[str]
+    fontSize: Optional[int] = 30
+    readStyle: Optional[str] = "short"
+
+
+@app.post("/render")
+def render_reel(req: ReelRequest):
+    if not req.moves:
+        raise HTTPException(status_code=400, detail="Move list cannot be empty.")
+
+    board = chess.Board()
+    temp_dir = tempfile.mkdtemp()
+    frame_paths = []
+
+    try:
+        svg_start = chess.svg.board(board=board, size=720)
+        start_frame_path = os.path.join(temp_dir, "frame_000.png")
+        cairosvg.svg2png(bytestring=svg_start.encode("utf-8"), write_to=start_frame_path)
+        frame_paths.append(start_frame_path)
+
+        for idx, uci_move in enumerate(req.moves):
+            try:
+                move = chess.Move.from_uci(uci_move)
+                if move not in board.legal_moves:
+                    continue
+
+                arrows = [chess.svg.Arrow(move.from_square, move.to_square, color="#ffaa00cc")]
+                board.push(move)
+
+                svg_board = chess.svg.board(board=board, size=720, arrows=arrows)
+                frame_path = os.path.join(temp_dir, f"frame_{idx + 1:03d}.png")
+                cairosvg.svg2png(bytestring=svg_board.encode("utf-8"), write_to=frame_path)
+                frame_paths.append(frame_path)
+            except Exception:
+                continue
+
+        if not frame_paths:
+            raise HTTPException(status_code=500, detail="Failed to render move frames.")
+
+        frame_paths.extend([frame_paths[-1]] * 3)
+
+        output_video_path = os.path.join(temp_dir, "chess_reel.mp4")
+        clip = ImageSequenceClip(frame_paths, fps=1.2)
+
+        if os.path.exists("move.wav"):
+            try:
+                audio = AudioFileClip("move.wav")
+                clip = clip.set_audio(audio)
+            except Exception:
+                pass
+
+        clip.write_videofile(
+            output_video_path,
+            codec="libx264",
+            audio_codec="aac",
+            fps=24,
+            preset="ultrafast",
+            threads=2,
+            logger=None,
+        )
+
+        return FileResponse(output_video_path, media_type="video/mp4", filename=f"{req.title}.mp4")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/render-flyer")
+def render_business_flyer(req: BusinessFlyerRequest):
+    try:
+        png_bytes = render_business_flyer_image(req)
+        return Response(content=png_bytes, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Flyer rendering error: {str(e)}")
+
+
+@app.get("/render-flyer")
+def render_business_flyer_get(
+    business_name: str = Query("Vasant Power Laundry"),
+    headline: str = Query("Premium Laundry & Steam Pressing"),
+    cta_text: str = Query("Drop Off Today"),
+):
+    req = BusinessFlyerRequest(business_
+                               
