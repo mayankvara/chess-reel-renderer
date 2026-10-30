@@ -187,34 +187,32 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
         draw.text(((canvas_w - line_w) // 2, y_pos), line, fill=(255, 255, 255), font=headline_font)
         y_pos += 78
 
-    # 4. Generate DALL-E 3 Artwork
+    # 4. Generate AI Artwork using DALL-E 2
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         raise ValueError("OPENAI_API_KEY environment variable is not configured.")
 
     client = OpenAI(api_key=openai_key)
     response = client.images.generate(
-        model="dall-e-3",
+        model="dall-e-2",
         prompt=(
             f"{payload.primary_visual_query}. "
-            "Isolated clean subject, flat commercial advertising vector/3D render style, "
+            "Clean commercial advertising illustration, "
             "no text, no letters, no logos, centered composition."
         ),
-        size="1024x1024",
-        quality="standard",
+        size="512x512",
         n=1,
     )
 
     image_data = response.data[0]
     if getattr(image_data, "url", None):
-        # Fetch with explicit timeout and User-Agent
         req = urllib.request.Request(image_data.url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=45) as remote_image:
             art_bytes = remote_image.read()
     elif getattr(image_data, "b64_json", None):
         art_bytes = base64.b64decode(image_data.b64_json)
     else:
-        raise ValueError("DALL-E 3 returned no valid URL or base64 data.")
+        raise ValueError("DALL-E 2 returned no valid URL or base64 data.")
 
     # 5. Composite Art
     with Image.open(io.BytesIO(art_bytes)) as art:
