@@ -180,12 +180,29 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
     project_root = os.path.dirname(os.path.abspath(__file__))
     canvas_w, canvas_h = 1080, 1350
 
-    # 1. Solid High-Contrast Background (Deep Navy)
-    canvas = Image.new("RGB", (canvas_w, canvas_h), (11, 27, 53))
-    draw = ImageDraw.Draw(canvas)
+   # 1. Scale logo slightly larger for balanced branding
+    logo_path = os.path.join(project_root, "assets", "logo", "logo_vasant_white.png")
+    if os.path.exists(logo_path):
+        try:
+            with Image.open(logo_path) as logo:
+                cleaned_logo = _clean_logo_transparency(logo)
+                # Scale up from 360 to 460px wide
+                cleaned_logo.thumbnail((460, 115), Image.Resampling.LANCZOS)
+                logo_x = (canvas_w - cleaned_logo.width) // 2
+                canvas.paste(cleaned_logo, (logo_x, 48), mask=cleaned_logo.split()[3])
+        except Exception as e:
+            print(f"Warning: logo failed to load: {e}")
 
-    # 2. Subtle Header Accent Area
-    draw.rectangle([(0, 0), (canvas_w, 200)], fill=(16, 38, 74))
+    # 2. Fix missing glyph boxes in contact bar
+    footer_h = 140
+    footer_y = canvas_h - footer_h
+    draw.rectangle([(0, footer_y), (canvas_w, canvas_h)], fill=(7, 18, 36))
+
+    # Clean text without unsupported emoji glyphs
+    contact_text = f"+91 {payload.phone_number.replace('+91', '').strip()}   •   {payload.location.upper()}"
+    bbox = draw.textbbox((0, 0), contact_text, font=contact_font)
+    contact_w = bbox[2] - bbox[0]
+    draw.text(((canvas_w - contact_w) // 2, canvas_h - 85), contact_text, fill=(210, 225, 255), font=contact_font)
 
     # 3. Logo with dark background removal
     logo_path = os.path.join(project_root, "assets", "logo", "logo_vasant_white.png")
