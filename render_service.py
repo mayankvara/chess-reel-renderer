@@ -346,5 +346,10 @@ def render_business_flyer_get(
     headline: str = Query("Premium Laundry & Steam Pressing"),
     cta_text: str = Query("Drop Off Today"),
 ):
-    req = BusinessFlyerRequest(business_
-                               
+    req = BusinessFlyerRequest(
+        business_name=business_name, 
+        headline=headline, 
+        cta_text=cta_text
+    )
+    png_bytes = render_business_flyer_image(req)
+    return Response(content=png_bytes, media_type="image/png")
