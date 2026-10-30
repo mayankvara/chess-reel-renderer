@@ -5,6 +5,7 @@ import tempfile
 import textwrap
 from typing import Any, Dict, List, Optional
 import urllib.request
+import urllib.parse
 
 from fastapi import FastAPI, Response, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -149,39 +150,31 @@ def _get_text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageF
     except Exception:
         return len(text) * 12
 
-
 def _generate_imagen_art(prompt_query: str) -> Image.Image:
-    """Generates central artwork via Google Imagen 3."""
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_key:
-        raise ValueError("GEMINI_API_KEY environment variable is not configured.")
-
-    client = genai.Client(api_key=gemini_key)
-
+    """Generates crisp central commercial artwork with zero API key or enterprise hurdles."""
     refined_prompt = (
-        f"{prompt_query}. "
-        "Flat modern vector art, clean commercial advertising style, "
-        "vibrant solid turquoise background, centered subject, completely isolated, "
-        "STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO NUMBERS."
+        f"{prompt_query}, "
+        "flat vector illustration, modern clean advertising art style, "
+        "solid turquoise background, centered subject, sharp crisp details, "
+        "completely isolated, strictly no text, no words, no letters, no logos"
     )
-
-    response = client.models.generate_images(
-        model="imagen-3.0-generate-002",
-        prompt=refined_prompt,
-        config=types.GenerateImagesConfig(
-            number_of_images=1,
-            aspect_ratio="1:1",
-            safety_filter_level="BLOCK_MEDIUM_AND_ABOVE",
-            person_generation="ALLOW_ADULT",
-        ),
+    
+    encoded_prompt = urllib.parse.quote(refined_prompt)
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=768&height=768&nologo=true&seed=42"
+    
+    req = urllib.request.Request(
+        image_url, 
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     )
-
-    if not response.generated_images:
-        raise ValueError("Google Imagen 3 returned no images.")
-
-    raw_bytes = response.generated_images[0].image.image_bytes
+    
+    try:
+        with urllib.request.urlopen(req, timeout=35) as response:
+            raw_bytes = response.read()
+    except Exception as exc:
+        raise ValueError(f"Artwork generation request failed: {str(exc)}")
+        
     return Image.open(io.BytesIO(raw_bytes)).convert("RGBA")
-
+    
 
 def _render_dynamic_post(payload: PostPayload) -> bytes:
     project_root = os.path.dirname(os.path.abspath(__file__))
