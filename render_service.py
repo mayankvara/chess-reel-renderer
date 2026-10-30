@@ -194,13 +194,14 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
 
     client = OpenAI(api_key=openai_key)
     response = client.images.generate(
-        model="dall-e-2",
+        model="dall-e-3",
         prompt=(
             f"{payload.primary_visual_query}. "
             "Clean commercial advertising illustration, "
             "no text, no letters, no logos, centered composition."
         ),
-        size="512x512",
+        size="1024x1024",
+        quality="standard",
         n=1,
     )
 
