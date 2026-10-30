@@ -6,3 +6,5 @@ moviepy<2.0.0
 Pillow
 pydantic
 imageio-ffmpeg
+openai
+requests
