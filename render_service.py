@@ -1,12 +1,15 @@
 import os
 import io
+import base64
 import tempfile
+import textwrap
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, Response, HTTPException, Query
 from fastapi.responses import FileResponse
 from openai import OpenAI
 from pydantic import BaseModel
+from PIL import Image, ImageDraw, ImageFont
 
 import chess
 import chess.svg
@@ -38,6 +41,12 @@ class PostPayload(BaseModel):
     cta: str = "Book a pickup today"
     brand_name: str = "Vasant Laundry"
     accent_color: str = "#1d4ed8"
+    phone_number: str = "+91 9909460668"
+    location: str = "Porbandar"
+    primary_visual_query: str = (
+        "Premium laundry service hero illustration with folded clean white towels, steam iron, basket,"
+        " polished modern laundry care scene, high-end lifestyle photography style"
+    )
 
 
 @app.get("/")
@@ -110,16 +119,95 @@ def run_system_diagnostics() -> Dict[str, Any]:
     }
 
 
+def _load_font(font_path: str, size: int) -> ImageFont.FreeTypeFont:
+    if os.path.exists(font_path):
+        return ImageFont.truetype(font_path, size=size)
+    return ImageFont.load_default()
+
+
+def _render_dynamic_post(payload: PostPayload) -> bytes:
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    canvas_w, canvas_h = 1080, 1350
+    canvas = Image.new("RGBA", (canvas_w, canvas_h), (7, 22, 44, 255))
+    draw = ImageDraw.Draw(canvas)
+
+    background = Image.new("RGBA", (canvas_w, canvas_h), (11, 27, 53, 255))
+    canvas = Image.alpha_composite(background, canvas)
+
+    bubble_path = os.path.join(project_root, "assets", "stickers_overlays", "bubble_pattern.png")
+    if os.path.exists(bubble_path):
+        overlay = Image.open(bubble_path).convert("RGBA").resize((canvas_w, canvas_h))
+        canvas = Image.alpha_composite(canvas, overlay)
+
+    logo_path = os.path.join(project_root, "assets", "logo", "logo_vasant_white.png")
+    if os.path.exists(logo_path):
+        logo = Image.open(logo_path).convert("RGBA")
+        logo.thumbnail((380, 110), Image.Resampling.LANCZOS)
+        logo_x = (canvas_w - logo.width) // 2
+        canvas.paste(logo, (logo_x, 70), logo)
+
+    headline_font = _load_font(os.path.join(project_root, "assets", "fonts", "Poppins-Bold.ttf"), 62)
+    wrapped_headline = textwrap.wrap(payload.headline.strip(), width=18)
+    y_pos = 220
+    for line in wrapped_headline[:3]:
+        bbox = draw.textbbox((0, 0), line, font=headline_font)
+        line_w = bbox[2] - bbox[0]
+        draw.text(((canvas_w - line_w) // 2, y_pos), line, fill=(255, 255, 255), font=headline_font)
+        y_pos += 78
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        raise ValueError("OPENAI_API_KEY is not set")
+
+    client = OpenAI(api_key=openai_key)
+    response = client.images.generate(
+        model="dall-e-3",
+        prompt=payload.primary_visual_query,
+        size="1024x1024",
+        quality="standard",
+        n=1,
+    )
+
+    image_data = response.data[0]
+    if getattr(image_data, "url", None):
+        import urllib.request
+
+        with urllib.request.urlopen(image_data.url) as remote_image:
+            art_bytes = remote_image.read()
+    elif getattr(image_data, "b64_json", None):
+        art_bytes = base64.b64decode(image_data.b64_json)
+    else:
+        raise ValueError("DALL-E 3 did not return an image payload")
+
+    art = Image.open(io.BytesIO(art_bytes)).convert("RGBA")
+    target_w, target_h = 560, 560
+    art.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+    art_x = (canvas_w - art.width) // 2
+    art_y = 430
+    canvas.paste(art, (art_x, art_y), art)
+
+    footer_h = 140
+    footer_y = canvas_h - footer_h
+    draw.rectangle([(0, footer_y), (canvas_w, canvas_h)], fill=(10, 25, 47, 255))
+
+    contact_text = f"📞 {payload.phone_number}   📍 {payload.location}"
+    contact_font = _load_font(os.path.join(project_root, "assets", "fonts", "Inter-Regular.ttf"), 26)
+    contact_bbox = draw.textbbox((0, 0), contact_text, font=contact_font)
+    contact_w = contact_bbox[2] - contact_bbox[0]
+    draw.text(((canvas_w - contact_w) // 2, canvas_h - 60), contact_text, fill=(207, 218, 255), font=contact_font)
+
+    buf = io.BytesIO()
+    canvas.convert("RGB").save(buf, format="PNG")
+    return buf.getvalue()
+
+
 @app.post("/render-post")
-def render_post(payload: PostPayload) -> Dict[str, Any]:
+def render_post(payload: PostPayload) -> Response:
     try:
-        return {
-            "status": "ok",
-            "message": "Poster payload accepted",
-            "payload": payload.model_dump(),
-        }
+        png_bytes = _render_dynamic_post(payload)
+        return Response(content=png_bytes, media_type="image/png")
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=f"Poster rendering error: {str(exc)}")
 
 
 class ReelRequest(BaseModel):
