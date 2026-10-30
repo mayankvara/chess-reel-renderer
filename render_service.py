@@ -177,11 +177,13 @@ def _render_dynamic_post(payload: PostPayload) -> bytes:
     project_root = os.path.dirname(os.path.abspath(__file__))
     canvas_w, canvas_h = 1080, 1350
 
-    # 1. Solid High-Contrast Base Canvas
+    # 1. Base Canvas
     canvas = Image.new("RGB", (canvas_w, canvas_h), (11, 27, 53))
+    
+    # Define draw immediately after canvas creation
     draw = ImageDraw.Draw(canvas)
 
-    # 2. Header Accent Area
+    # 2. Header Accent
     draw.rectangle([(0, 0), (canvas_w, 200)], fill=(16, 38, 74))
 
     # 3. Logo (Transparent Mask Paste & Scaled)
