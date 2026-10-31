@@ -34,20 +34,11 @@ def health_check():
         ]
     }
 
-
 @app.post("/render-laundry-flyer")
 async def render_laundry_flyer_endpoint(req: LaundryFlyerRequest):
-    """
-    Renders a high-resolution 1080x1440 flyer with ornate gold borders,
-    tip content, contact info, and an auto-generated WhatsApp QR code.
-    Returns: Raw PNG image binary.
-    """
-    try:
-        img_bytes = generate_laundry_flyer(req)
-        return Response(content=img_bytes, media_type="image/png")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Flyer rendering error: {str(e)}")
-
+    img_bytes = generate_laundry_flyer(req)
+    return Response(content=img_bytes, media_type="image/png")
+    
 
 @app.get("/debug")
 def run_system_diagnostics():
