@@ -4,7 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 
 # Import the laundry flyer module
-from laundry_flyer_service import LaundryFlyerRequest, generate_laundry_flyer
+from flyer_service import (
+    BusinessFlyerRequest,
+    ChessQuoteFlyerRequest,
+    LaundryFlyerRequest,
+    render_business_flyer_image,
+    render_chess_quote_image,
+    render_laundry_flyer_image,
+)
 
 app = FastAPI(
     title="Vasant Power Laundry & Media Renderer Service",
@@ -34,12 +41,13 @@ def health_check():
         ]
     }
 
+
 @app.post("/render-laundry-flyer")
+@app.post("/render-flyer")
 async def render_laundry_flyer_endpoint(req: LaundryFlyerRequest):
-    img_bytes = generate_laundry_flyer(req)
+    img_bytes = render_laundry_flyer_image(req)
     return Response(content=img_bytes, media_type="image/png")
     
-
 @app.get("/debug")
 def run_system_diagnostics():
     openai_key = os.getenv("OPENAI_API_KEY")
