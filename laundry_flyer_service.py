@@ -15,30 +15,35 @@ except ImportError:
 
 class LaundryFlyerRequest(BaseModel):
     tip_number: Union[int, str] = 1
-    category: str = "Silk & Sarees"
-    headline: str = "Never Spray Perfume Directly on Pure Zari Silk"
+    category: str = "સિલ્ક અને સાડી"
+    headline: str = "અસલી ઝરીવાળી સિલ્ક સાડી પર ક્યારેય સીધો પરફ્યુમ ન છાંટો"
     body_text: str = (
-        "Alcohol dissolves delicate metallic coatings and causes permanent tarnishing. "
-        "Mist your scent on skin first, wait 2 minutes, then drape your saree."
+        "પરફ્યુમમાં રહેલ આલ્કોહોલ ઝરીના નાજુક મેટાલિક કોટિંગને નુકસાન પહોંચાડે છે અને કાળી પાડી દે છે. "
+        "સુગંધ પહેલા શરીર પર લગાવો, ૨ મિનિટ પછી સાડી પહેરો."
     )
     pro_takeaway: str = (
-        "Pro Fix: Dry clean pure Zari every 3 wears & store in breathable cotton muslin."
+        "ખાસ ટીપ: અસલી ઝરીને દર ૩-૪ વપરાશ પછી ડ્રાય ક્લીન કરાવો અને સુતરાઉ કપડામાં લપેટીને સાચવો."
     )
-    brand_name: str = "VASANT POWER LAUNDRY"
-    brand_tagline: str = "Porbandar's Trusted Garment Care Since 1995"
-    phone_number: str = "9033281622"
-    shop_address: str = "Wagheshwari Plot, Porbandar"
+    brand_name: str = "વસંત પાવર લોન્ડ્રી"
+    brand_tagline: str = "૧૯૯૫થી વિશ્વસનીય ગુણવત્તા અને સંભાળ"
+    phone_number: str = "+919033281622"
+    shop_address: str = "વાઘેશ્વરી પ્લોટ, પોરબંદર"
     canvas_size: Tuple[int, int] = (1080, 1440)
 
 
 def get_font(size: int, bold: bool = False) -> ImageFont.ImageFont:
+    """Loads Gujarati compatible TrueType fonts across Linux/Render/Windows environments."""
     candidates = [
+        # Gujarati Noto Fonts (Linux / Render)
+        "/usr/share/fonts/truetype/noto/NotoSansGujarati-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf",
+        "/usr/share/fonts/truetype/lohit-gujarati/Lohit-Gujarati.ttf",
+        "/usr/share/fonts/truetype/samyak-fonts/Samyak-Gujarati.ttf",
+        # Windows Fonts
+        "C:\\Windows\\Fonts\\shruti.ttf",
+        "C:\\Windows\\Fonts\\shrutib.ttf" if bold else "C:\\Windows\\Fonts\\shruti.ttf",
+        # Fallbacks
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-        "C:\\Windows\\Fonts\\arialbd.ttf" if bold else "C:\\Windows\\Fonts\\arial.ttf",
         "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
-        "Arial Bold.ttf" if bold else "Arial.ttf",
     ]
 
     for path in candidates:
@@ -76,24 +81,18 @@ def generate_scannable_qr(data_url: str, size: int = 115) -> Image.Image:
         img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
         return img.resize((size, size), Image.NEAREST)
 
-    # Clean fallback using OpenCV if qrcode is not installed in the environment
     try:
         import cv2
         import numpy as np
 
         encoder = cv2.QRCodeEncoder.create()
         mat = encoder.encode(data_url)
-        if mat[0, 0] == 255:
-            img_arr = np.where(mat == 255, 0, 255).astype(np.uint8)
-        else:
-            img_arr = np.where(mat == 1, 0, 255).astype(np.uint8)
-
+        img_arr = np.where(mat == 255, 0, 255).astype(np.uint8) if mat[0, 0] == 255 else np.where(mat == 1, 0, 255).astype(np.uint8)
         qr_raw = Image.fromarray(img_arr, mode="L")
         padded = Image.new("L", (qr_raw.width + 4, qr_raw.height + 4), color=255)
         padded.paste(qr_raw, (2, 2))
         return padded.resize((size, size), Image.NEAREST).convert("RGB")
     except Exception:
-        # Emergency white fallback box if neither library is available
         return Image.new("RGB", (size, size), color=(255, 255, 255))
 
 
@@ -117,14 +116,13 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
     GOLD_DARK = (135, 96, 18)
     GOLD_DEEP = (75, 50, 10)
 
-    # 2. 5-Tier Victorian Outer Rails
+    # 2. 5-Tier Framing Rails
     draw.rectangle([28, 28, width - 28, height - 28], outline=GOLD_DEEP, width=1)
     draw.rectangle([34, 34, width - 34, height - 34], outline=GOLD_DARK, width=1)
     draw.rectangle([44, 44, width - 44, height - 44], outline=GOLD_CORE, width=3)
     draw.rectangle([54, 54, width - 54, height - 54], outline=GOLD_DARK, width=1)
     draw.rectangle([60, 60, width - 60, height - 60], outline=GOLD_DEEP, width=1)
 
-    # Outer border pearl beads
     pearl_margin = 44
     for px in range(210, width - 210, 20):
         draw.ellipse([px - 2, pearl_margin - 2, px + 2, pearl_margin + 2], fill=GOLD_LIGHT, outline=GOLD_DARK)
@@ -185,16 +183,16 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
             draw.polygon([(tip_x, y_pos - 4), (tip_x + dir_val * 5, y_pos), (tip_x, y_pos + 4), (tip_x - dir_val * 5, y_pos)], fill=GOLD_LIGHT)
 
     font_crest = get_font(36, bold=True)
-    font_pill = get_font(25, bold=True)
-    font_head = get_font(46, bold=True)
-    font_body = get_font(28, bold=False)
-    font_pro = get_font(25, bold=True)
-    font_cta = get_font(27, bold=True)
-    font_contact_title = get_font(25, bold=True)
+    font_pill = get_font(24, bold=True)
+    font_head = get_font(40, bold=True)
+    font_body = get_font(26, bold=False)
+    font_pro = get_font(23, bold=True)
+    font_cta = get_font(26, bold=True)
+    font_contact_title = get_font(24, bold=True)
     font_contact_sub = get_font(20, bold=False)
-    font_qr_label = get_font(13, bold=True)
+    font_qr_label = get_font(12, bold=True)
 
-    # Monogram Shield Emblem
+    # Monogram Shield
     crest_cy = 118
     draw.polygon(
         [
@@ -209,19 +207,6 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
         outline=GOLD_CORE,
         width=2,
     )
-    draw.polygon(
-        [
-            (width // 2, crest_cy - 36),
-            (width // 2 + 40, crest_cy - 7),
-            (width // 2 + 28, crest_cy + 31),
-            (width // 2, crest_cy + 42),
-            (width // 2 - 28, crest_cy + 31),
-            (width // 2 - 40, crest_cy - 7),
-        ],
-        outline=GOLD_MED,
-        width=1,
-    )
-
     draw.line([(width // 2 - 18, crest_cy - 12), (width // 2, crest_cy + 22)], fill=GOLD_LIGHT, width=3)
     draw.line([(width // 2, crest_cy + 22), (width // 2 + 18, crest_cy - 12)], fill=GOLD_LIGHT, width=3)
 
@@ -230,9 +215,9 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
         cy_c = crest_cy - 48 - (5 if ci == 0 else (2 if abs(ci) == 1 else -3))
         draw.ellipse([cx_c - 3, cy_c - 3, cx_c + 3, cy_c + 3], fill=GOLD_LIGHT, outline=GOLD_DARK)
 
-    # Top Brand Title
+    # Brand Title
     draw_ornate_separator(184, span=330)
-    brand_text = req.brand_name.upper()
+    brand_text = req.brand_name
     bbox = draw.textbbox((0, 0), brand_text, font=font_crest)
     tw = bbox[2] - bbox[0]
     draw.text(((width - tw) // 2 + 2, 202), brand_text, fill=(0, 0, 0), font=font_crest)
@@ -240,37 +225,33 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
 
     # 5. Tip Pill
     pill_y = 268
-    pill_w = 560
+    tip_text = f"ટીપ નં. {str(req.tip_number).strip()}  |  {req.category}"
+    tbox = draw.textbbox((0, 0), tip_text, font=font_pill)
+    ptw = tbox[2] - tbox[0]
+    pill_w = max(560, ptw + 60)
     pill_h = 56
     px = (width - pill_w) // 2
     draw.rounded_rectangle([px, pill_y, px + pill_w, pill_y + pill_h], radius=16, fill=(15, 34, 75), outline=GOLD_CORE, width=2)
     draw.rounded_rectangle([px + 4, pill_y + 4, px + pill_w - 4, pill_y + pill_h - 4], radius=12, outline=GOLD_MED, width=1)
-
     draw.polygon([(px - 14, pill_y + pill_h // 2), (px, pill_y + 14), (px, pill_y + pill_h - 14)], fill=GOLD_DARK, outline=GOLD_CORE)
     draw.polygon([(px + pill_w + 14, pill_y + pill_h // 2), (px + pill_w, pill_y + 14), (px + pill_w, pill_y + pill_h - 14)], fill=GOLD_DARK, outline=GOLD_CORE)
-    draw.ellipse([px - 6, pill_y + pill_h // 2 - 3, px, pill_y + pill_h // 2 + 3], fill=GOLD_LIGHT)
-    draw.ellipse([px + pill_w, pill_y + pill_h // 2 - 3, px + pill_w + 6, pill_y + pill_h // 2 + 3], fill=GOLD_LIGHT)
+    draw.text(((width - ptw) // 2, pill_y + 13), tip_text, fill=GOLD_LIGHT, font=font_pill)
 
-    tip_text = f"TIP #{str(req.tip_number).strip()}  |  {req.category.upper()}"
-    tbox = draw.textbbox((0, 0), tip_text, font=font_pill)
-    ptw = tbox[2] - tbox[0]
-    draw.text(((width - ptw) // 2, pill_y + 14), tip_text, fill=GOLD_LIGHT, font=font_pill)
-
-    # 6. Hero Headline
-    head_y = 360
-    head_lines = textwrap.wrap(req.headline, width=28)
+    # 6. Headline
+    head_y = 358
+    head_lines = textwrap.wrap(req.headline, width=26)
     for hline in head_lines:
         hbox = draw.textbbox((0, 0), hline, font=font_head)
         hw = hbox[2] - hbox[0]
         draw.text(((width - hw) // 2 + 2, head_y + 2), hline, fill=(0, 0, 0), font=font_head)
         draw.text(((width - hw) // 2, head_y), hline, fill=(255, 255, 255), font=font_head)
-        head_y += 58
+        head_y += 56
 
     # 7. Content Box
     box_w = 900
-    box_h = 390
+    box_h = 405
     bx1 = (width - box_w) // 2
-    by1 = head_y + 26
+    by1 = head_y + 24
     bx2 = bx1 + box_w
     by2 = by1 + box_h
 
@@ -289,13 +270,13 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
         cd_x, cd_y = cx_b + sx * 16, cy_b + sy * 16
         draw.polygon([(cd_x, cd_y - 4), (cd_x + 4, cd_y), (cd_x, cd_y + 4), (cd_x - 4, cd_y)], fill=GOLD_LIGHT, outline=GOLD_CORE)
 
-    cur_by = by1 + 45
-    body_lines = textwrap.wrap(req.body_text, width=46)
+    cur_by = by1 + 42
+    body_lines = textwrap.wrap(req.body_text, width=42)
     for bline in body_lines:
         bbox = draw.textbbox((0, 0), bline, font=font_body)
         bw = bbox[2] - bbox[0]
         draw.text(((width - bw) // 2, cur_by), bline, fill=(235, 242, 255), font=font_body)
-        cur_by += 42
+        cur_by += 44
 
     # Pro-Tip Plaque
     pro_y = cur_by + 20
@@ -305,18 +286,18 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
     draw.rounded_rectangle([pro_x, pro_y, pro_x + pro_w, pro_y + pro_h], radius=10, fill=(14, 32, 72), outline=GOLD_CORE, width=2)
     draw.rounded_rectangle([pro_x + 3, pro_y + 3, pro_x + pro_w - 3, pro_y + pro_h - 3], radius=7, outline=GOLD_MED, width=1)
 
-    pro_lines = textwrap.wrap(req.pro_takeaway, width=50)
+    pro_lines = textwrap.wrap(req.pro_takeaway, width=44)
     pty = pro_y + 16
     for pl in pro_lines:
         pbox = draw.textbbox((0, 0), pl, font=font_pro)
         pw = pbox[2] - pbox[0]
         draw.text(((width - pw) // 2, pty), pl, fill=GOLD_LIGHT, font=font_pro)
-        pty += 32
+        pty += 34
 
     # 8. CTA Ribbon Banner
-    draw_ornate_separator(by2 + 34, span=380)
+    draw_ornate_separator(by2 + 32, span=380)
 
-    cta_y = by2 + 66
+    cta_y = by2 + 64
     cta_w = 780
     cta_h = 64
     cx = (width - cta_w) // 2
@@ -324,17 +305,17 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
     draw.polygon([(cx - 24, cta_y + cta_h // 2), (cx, cta_y - 5), (cx, cta_y + cta_h + 5)], fill=GOLD_DEEP, outline=GOLD_DARK)
     draw.polygon([(cx + cta_w + 24, cta_y + cta_h // 2), (cx + cta_w, cta_y - 5), (cx + cta_w, cta_y + cta_h + 5)], fill=GOLD_DEEP, outline=GOLD_DARK)
     draw.rounded_rectangle([cx, cta_y, cx + cta_w, cta_y + cta_h], radius=6, fill=GOLD_CORE, outline=GOLD_LIGHT, width=2)
-    cta_label = "DROP OFF TODAY & FEEL THE ROYAL FRESHNESS"
+    cta_label = "આજે જ પધારો અને કપડાંને આપો રોયલ ફ્રેશનેસ"
     ctabox = draw.textbbox((0, 0), cta_label, font=font_cta)
     cw = ctabox[2] - ctabox[0]
-    draw.text(((width - cw) // 2 + 1, cta_y + 18), cta_label, fill=(0, 0, 0), font=font_cta)
+    draw.text(((width - cw) // 2 + 1, cta_y + 17), cta_label, fill=(0, 0, 0), font=font_cta)
 
-    draw_ornate_separator(cta_y + cta_h + 32, span=390)
+    draw_ornate_separator(cta_y + cta_h + 30, span=390)
 
     # 9. Contact Card Container with WhatsApp QR
-    contact_panel_y = cta_y + cta_h + 50
+    contact_panel_y = cta_y + cta_h + 48
     contact_panel_w = 840
-    contact_panel_h = 180
+    contact_panel_h = 185
     cpx = (width - contact_panel_w) // 2
 
     draw.rounded_rectangle(
@@ -351,7 +332,6 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
         width=1,
     )
 
-    # Clean phone digits and enforce international +91 for WhatsApp deep link
     digits = "".join(filter(str.isdigit, str(req.phone_number)))
     if len(digits) == 10:
         clean_phone = f"91{digits}"
@@ -360,7 +340,7 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
     else:
         clean_phone = digits if digits.startswith("91") else f"91{digits}"
 
-    wa_msg = f"Hello {req.brand_name}, I would like to inquire about laundry pickup & garment care."
+    wa_msg = f"નમસ્તે {req.brand_name}, મારે કપડાંની લોન્ડ્રી અને ડ્રાય ક્લીનિંગ સર્વિસ વિશે પૂછપરછ કરવી છે."
     wa_url = f"https://wa.me/{clean_phone}?text={urllib.parse.quote(wa_msg)}"
     qr_img = generate_scannable_qr(wa_url, size=115)
 
@@ -371,11 +351,11 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
 
     # Badge below QR code
     qr_badge_w = 125
-    qr_badge_h = 22
+    qr_badge_h = 24
     qbx = qr_x - 5
     qby = qr_y + 122
     draw.rounded_rectangle([qbx, qby, qbx + qr_badge_w, qby + qr_badge_h], radius=3, fill=GOLD_CORE)
-    qr_tag_txt = "SCAN WHATSAPP"
+    qr_tag_txt = "સ્કેન વોટ્સએપ"
     q_bbox = draw.textbbox((0, 0), qr_tag_txt, font=font_qr_label)
     qw = q_bbox[2] - q_bbox[0]
     draw.text((qbx + (qr_badge_w - qw) // 2, qby + 4), qr_tag_txt, fill=(0, 0, 0), font=font_qr_label)
@@ -384,10 +364,10 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
     text_left_x = cpx + 32
     t_start_y = contact_panel_y + 22
 
-    draw.text((text_left_x, t_start_y), f"Call / WhatsApp:  +91 {digits[-10:]}", fill=GOLD_LIGHT, font=font_contact_title)
-    draw.text((text_left_x, t_start_y + 38), f"Shop Address:  {req.shop_address}", fill=(240, 245, 255), font=font_contact_sub)
-    draw.text((text_left_x, t_start_y + 70), "Doorstep Pickup & Delivery Available Across Porbandar", fill=GOLD_MED, font=font_contact_sub)
-    draw.text((text_left_x, t_start_y + 102), f"{req.brand_name}  •  {req.brand_tagline}", fill=(175, 195, 230), font=font_contact_sub)
+    draw.text((text_left_x, t_start_y), f"કોલ / વોટ્સએપ:  +91 {digits[-10:]}", fill=GOLD_LIGHT, font=font_contact_title)
+    draw.text((text_left_x, t_start_y + 38), f"દુકાનનું સરનામું:  {req.shop_address}", fill=(240, 245, 255), font=font_contact_sub)
+    draw.text((text_left_x, t_start_y + 72), "પોરબંદરમાં ઘરબેઠા પીકઅપ અને ડિલિવરી સુવિધા", fill=GOLD_MED, font=font_contact_sub)
+    draw.text((text_left_x, t_start_y + 106), f"{req.brand_name}  -  {req.brand_tagline}", fill=(175, 195, 230), font=font_contact_sub)
 
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -395,4 +375,3 @@ def generate_laundry_flyer(req: LaundryFlyerRequest) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG", quality=95)
     return buf.getvalue()
-    
