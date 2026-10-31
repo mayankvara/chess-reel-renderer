@@ -9,3 +9,4 @@ imageio-ffmpeg
 openai
 requests
 google-genai
+qrcode[pil]
