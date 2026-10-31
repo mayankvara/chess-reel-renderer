@@ -4,6 +4,7 @@ services:
     env: python
     buildCommand: |
       apt-get update && apt-get install -y fonts-dejavu-core libcairo2 || true
+      apt-get update && apt-get install -y fonts-noto-core fonts-noto-extra 
       pip install -r requirements.txt
     startCommand: uvicorn render_service:app --host 0.0.0.0 --port $PORT
     plan: free
