@@ -1,13 +1,58 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 
-# (Ensure 'app' is your FastAPI instance)
+# Import the laundry flyer module
+from laundry_flyer_service import LaundryFlyerRequest, generate_laundry_flyer
+
+app = FastAPI(
+    title="Vasant Power Laundry & Media Renderer Service",
+    description="Automated rendering engine for laundry care tips and flyers",
+    version="1.0.0"
+)
+
+# Enable CORS for API integrations (Make.com, webhooks, dashboards)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+def health_check():
+    return {
+        "status": "online",
+        "service": "chess-reel-renderer",
+        "endpoints": [
+            "/debug",
+            "/render-laundry-flyer",
+            "/docs"
+        ]
+    }
+
+
+@app.post("/render-laundry-flyer")
+async def render_laundry_flyer_endpoint(req: LaundryFlyerRequest):
+    """
+    Renders a high-resolution 1080x1440 flyer with ornate gold borders,
+    tip content, contact info, and an auto-generated WhatsApp QR code.
+    Returns: Raw PNG image binary.
+    """
+    try:
+        img_bytes = generate_laundry_flyer(req)
+        return Response(content=img_bytes, media_type="image/png")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Flyer rendering error: {str(e)}")
+
 
 @app.get("/debug")
 def run_system_diagnostics():
     openai_key = os.getenv("OPENAI_API_KEY")
-    
+
     # 1. Check OpenAI API Key & Live Quota Test
     openai_status = {
         "key_present": bool(openai_key),
@@ -18,7 +63,6 @@ def run_system_diagnostics():
     if openai_key:
         try:
             client = OpenAI(api_key=openai_key)
-            # Lightweight models list check to verify API key validity and quota
             client.models.list()
             openai_status["api_live_check"] = "SUCCESS (Key valid & active)"
         except Exception as e:
@@ -47,7 +91,7 @@ def run_system_diagnostics():
 
     assets_check = {}
     missing_files = []
-    
+
     for file_path in expected_files:
         exists = os.path.exists(file_path)
         assets_check[file_path] = "EXISTS" if exists else "MISSING"
@@ -69,4 +113,4 @@ def run_system_diagnostics():
         "missing_assets": missing_files,
         "all_assets": assets_check
     }
-  
+    
