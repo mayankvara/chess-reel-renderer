@@ -2,7 +2,7 @@ import io
 import math
 import textwrap
 import urllib.parse
-from typing import Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
@@ -35,7 +35,6 @@ class LaundryFlyerRequest(BaseModel):
     canvas_size: Tuple[int, int] = (1080, 1440)
 
 
-# Kept for backward compatibility with existing generic endpoints
 class BusinessFlyerRequest(BaseModel):
     business_name: str = "Vasant Power Laundry"
     tagline: str = "Crisp • Clean • Express Care"
@@ -54,22 +53,25 @@ class BusinessFlyerRequest(BaseModel):
     canvas_size: Tuple[int, int] = (1080, 1080)
 
 
+class ChessQuoteFlyerRequest(BaseModel):
+    quote: str
+    player: str
+    designation: str = "World Champion"
+    branding: str = "Chess Players Ahmedabad"
+    canvas_size: Tuple[int, int] = (1080, 1080)
+
+
 # ==========================================
-# 2. Font Loader with Full Gujarati Unicode Support
+# 2. Font Loader with Gujarati Unicode Support
 # ==========================================
 
 def get_font(size: int, bold: bool = False) -> ImageFont.ImageFont:
-    """
-    Safely resolves Gujarati Unicode fonts across Ubuntu/Render, Debian,
-    Windows, and local font folders. Falls back cleanly without crashing.
-    """
     candidates = [
-        # Gujarati Noto fonts (Linux / Ubuntu standard on Render)
+        # Gujarati Noto Fonts (Linux / Render standard)
         "/usr/share/fonts/truetype/noto/NotoSansGujarati-Bold.ttf" if bold else "/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf",
         "/usr/share/fonts/truetype/noto/NotoSansGujarati-Medium.ttf",
         "/usr/share/fonts/truetype/lohit-gujarati/Lohit-Gujarati.ttf",
         "/usr/share/fonts/truetype/samyak-fonts/Samyak-Gujarati.ttf",
-        # Local repository font assets (if committed into repo)
         "assets/fonts/NotoSansGujarati-Bold.ttf" if bold else "assets/fonts/NotoSansGujarati-Regular.ttf",
         "NotoSansGujarati-Bold.ttf" if bold else "NotoSansGujarati-Regular.ttf",
         # Windows Gujarati system fonts
@@ -77,7 +79,9 @@ def get_font(size: int, bold: bool = False) -> ImageFont.ImageFont:
         "C:\\Windows\\Fonts\\shruti.ttf",
         # Latin fallbacks
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
         "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+        "Arial Bold.ttf" if bold else "Arial.ttf"
     ]
 
     for path in candidates:
@@ -119,7 +123,6 @@ def generate_scannable_qr(data_url: str, size: int = 115) -> Image.Image:
         img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
         return img.resize((size, size), Image.NEAREST)
 
-    # OpenCV fallback
     try:
         import cv2
         import numpy as np
@@ -144,7 +147,6 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
     img = Image.new("RGB", (width, height), color="#060E22")
     draw = ImageDraw.Draw(img)
 
-    # 1. Vignette Background
     for y in range(height):
         dy = abs(y - height // 2) / (height // 2)
         r = int(6 + (1 - dy) * 10)
@@ -152,14 +154,13 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
         b = int(34 + (1 - dy) * 44)
         draw.line([(0, y), (width, y)], fill=(r, g, b))
 
-    # Metallic Gold Palette
     GOLD_LIGHT = (255, 242, 175)
     GOLD_CORE  = (226, 178, 48)
     GOLD_MED   = (188, 142, 32)
     GOLD_DARK  = (135, 96, 18)
     GOLD_DEEP  = (75, 50, 10)
 
-    # 2. 5-Tier Framing Rails
+    # 5-Tier Framing Rails
     draw.rectangle([28, 28, width - 28, height - 28], outline=GOLD_DEEP, width=1)
     draw.rectangle([34, 34, width - 34, height - 34], outline=GOLD_DARK, width=1)
     draw.rectangle([44, 44, width - 44, height - 44], outline=GOLD_CORE, width=3)
@@ -174,7 +175,7 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
         draw.ellipse([pearl_margin - 2, py - 2, pearl_margin + 2, py + 2], fill=GOLD_LIGHT, outline=GOLD_DARK)
         draw.ellipse([width - pearl_margin - 2, py - 2, width - pearl_margin + 2, py + 2], fill=GOLD_LIGHT, outline=GOLD_DARK)
 
-    # 3. Corner Medallions & Stepped Brackets
+    # Corner Medallions & Stepped Brackets
     def draw_corner_ornament(cx, cy, sx, sy):
         draw.line([(cx, cy + sy * 16), (cx + sx * 135, cy + sy * 16)], fill=GOLD_CORE, width=2)
         draw.line([(cx + sx * 16, cy), (cx + sx * 16, cy + sy * 135)], fill=GOLD_CORE, width=2)
@@ -207,7 +208,7 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
     draw_corner_ornament(corner_inset, height - corner_inset, 1, -1)
     draw_corner_ornament(width - corner_inset, height - corner_inset, -1, -1)
 
-    # 4. Ornate Separators
+    # Ornate Separators
     def draw_ornate_separator(y_pos, span=380):
         mid_x = width // 2
         draw.polygon([(mid_x, y_pos - 12), (mid_x + 14, y_pos), (mid_x, y_pos + 12), (mid_x - 14, y_pos)], fill=GOLD_DEEP, outline=GOLD_CORE)
@@ -225,7 +226,6 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
             tip_x = mid_x + dir_val * span
             draw.polygon([(tip_x, y_pos - 4), (tip_x + dir_val * 5, y_pos), (tip_x, y_pos + 4), (tip_x - dir_val * 5, y_pos)], fill=GOLD_LIGHT)
 
-    # Typography (Gujarati-ready)
     font_crest = get_font(36, bold=True)
     font_pill = get_font(24, bold=True)
     font_head = get_font(40, bold=True)
@@ -267,7 +267,7 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
     draw.text(((width - tw) // 2 + 2, 202), brand_text, fill=(0, 0, 0), font=font_crest)
     draw.text(((width - tw) // 2, 200), brand_text, fill=GOLD_LIGHT, font=font_crest)
 
-    # 5. Tip Pill
+    # Tip Pill
     pill_y = 268
     tip_text = f"ટીપ નં. {str(req.tip_number).strip()}  |  {req.category}"
     tbox = draw.textbbox((0, 0), tip_text, font=font_pill)
@@ -281,7 +281,7 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
     draw.polygon([(px + pill_w + 14, pill_y + pill_h // 2), (px + pill_w, pill_y + 14), (px + pill_w, pill_y + pill_h - 14)], fill=GOLD_DARK, outline=GOLD_CORE)
     draw.text(((width - ptw) // 2, pill_y + 13), tip_text, fill=GOLD_LIGHT, font=font_pill)
 
-    # 6. Headline
+    # Headline
     head_y = 358
     head_lines = textwrap.wrap(req.headline, width=26)
     for hline in head_lines:
@@ -291,7 +291,7 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
         draw.text(((width - hw) // 2, head_y), hline, fill=(255, 255, 255), font=font_head)
         head_y += 56
 
-    # 7. Content Box
+    # Content Box
     box_w = 900
     box_h = 405
     bx1 = (width - box_w) // 2
@@ -338,7 +338,7 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
         draw.text(((width - pw) // 2, pty), pl, fill=GOLD_LIGHT, font=font_pro)
         pty += 34
 
-    # 8. CTA Ribbon Banner
+    # CTA Ribbon
     draw_ornate_separator(by2 + 32, span=380)
 
     cta_y = by2 + 64
@@ -356,7 +356,7 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
 
     draw_ornate_separator(cta_y + cta_h + 30, span=390)
 
-    # 9. Contact Card Container with WhatsApp QR
+    # Contact Card Container
     contact_panel_y = cta_y + cta_h + 48
     contact_panel_w = 840
     contact_panel_h = 185
@@ -397,5 +397,127 @@ def render_laundry_flyer_image(req: LaundryFlyerRequest) -> bytes:
     qr_badge_w = 125
     qr_badge_h = 24
     qbx = qr_x - 5
-    qby = qr_y
+    qby = qr_y + 122
+    draw.rounded_rectangle([qbx, qby, qbx + qr_badge_w, qby + qr_badge_h], radius=3, fill=GOLD_CORE)
+    qr_tag_txt = "સ્કેન વોટ્સએપ"
+    q_bbox = draw.textbbox((0, 0), qr_tag_txt, font=font_qr_label)
+    qw = q_bbox[2] - q_bbox[0]
+    draw.text((qbx + (qr_badge_w - qw) // 2, qby + 4), qr_tag_txt, fill=(0, 0, 0), font=font_qr_label)
+
+    # Contact Info
+    text_left_x = cpx + 32
+    t_start_y = contact_panel_y + 22
+
+    draw.text((text_left_x, t_start_y), f"કોલ / વોટ્સએપ:  +91 {digits[-10:]}", fill=GOLD_LIGHT, font=font_contact_title)
+    draw.text((text_left_x, t_start_y + 38), f"દુકાનનું સરનામું:  {req.shop_address}", fill=(240, 245, 255), font=font_contact_sub)
+    draw.text((text_left_x, t_start_y + 72), "પોરબંદરમાં ઘરબેઠા પીકઅપ અને ડિલિવરી સુવિધા", fill=GOLD_MED, font=font_contact_sub)
+    draw.text((text_left_x, t_start_y + 106), f"{req.brand_name}  -  {req.brand_tagline}", fill=(175, 195, 230), font=font_contact_sub)
+
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", quality=95)
+    return buf.getvalue()
+
+
+# Compatibility alias for laundry flyers
+def render_business_flyer_image(req: Union[LaundryFlyerRequest, BusinessFlyerRequest]) -> bytes:
+    if isinstance(req, LaundryFlyerRequest):
+        return render_laundry_flyer_image(req)
+    mapped_req = LaundryFlyerRequest(
+        tip_number=1,
+        category="General Care",
+        headline=req.headline,
+        body_text=req.subheadline,
+        pro_takeaway=f"Offer: {req.offer_badge}",
+        brand_name=req.business_name,
+        brand_tagline=req.tagline,
+        phone_number=req.phone_or_whatsapp,
+        shop_address=req.address_line,
+        canvas_size=req.canvas_size
+    )
+    return render_laundry_flyer_image(mapped_req)
+
+
+# ==========================================
+# 5. Chess Master Quote Flyer Generator (Retained)
+# ==========================================
+
+def render_chess_quote_image(req: ChessQuoteFlyerRequest) -> bytes:
+    width, height = req.canvas_size
+    img = Image.new("RGB", (width, height), color="#0F172A")
+    draw = ImageDraw.Draw(img)
+
+    margin = 48
+    draw.rounded_rectangle(
+        [(margin, margin), (width - margin, height - margin)],
+        radius=24,
+        outline="#334155",
+        width=3
+    )
+
+    quote_mark_font = get_font(180, bold=True)
+    draw.text((margin + 40, margin + 20), "“", fill="#F59E0B", font=quote_mark_font)
+
+    quote_clean = req.quote.strip('“”"')
+    font_size = 56 if len(quote_clean) < 95 else 44
+    font_quote = get_font(font_size, bold=True)
+
+    wrap_width = 28 if font_size == 56 else 34
+    lines = textwrap.wrap(quote_clean, width=wrap_width)
+    wrapped_text = "\n".join(f'"{line}' if i == 0 else line for i, line in enumerate(lines))
+    if not wrapped_text.endswith('"'):
+        wrapped_text += '"'
+
+    bbox = draw.multiline_textbbox((0, 0), wrapped_text, font=font_quote, spacing=18)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    quote_x = (width - text_w) // 2
+    quote_y = 360 - (text_h // 3)
+
+    draw.multiline_text(
+        (quote_x, quote_y),
+        wrapped_text,
+        fill="#FFFFFF",
+        font=font_quote,
+        spacing=18,
+        align="center"
+    )
+
+    author_y = quote_y + text_h + 70
+    line_w = 80
+    draw.line(
+        [((width - line_w) // 2, author_y), ((width + line_w) // 2, author_y)],
+        fill="#F59E0B",
+        width=4
+    )
+
+    font_author = get_font(40, bold=True)
+    author_name = req.player.upper()
+    abbox = draw.textbbox((0, 0), author_name, font=font_author)
+    draw.text(((width - (abbox[2] - abbox[0])) // 2, author_y + 24), author_name, fill="#FBBF24", font=font_author)
+
+    if req.designation:
+        font_desig = get_font(26, bold=False)
+        dbbox = draw.textbbox((0, 0), req.designation, font=font_desig)
+        draw.text(((width - (dbbox[2] - dbbox[0])) // 2, author_y + 76), req.designation, fill="#94A3B8", font=font_desig)
+
+    font_brand = get_font(26, bold=True)
+    brand_text = f"♟ {req.branding.upper()} • DAILY INSPIRATION"
+    bbbox = draw.textbbox((0, 0), brand_text, font=font_brand)
+    bw, bh = bbbox[2] - bbbox[0], bbbox[3] - bbbox[1]
+
+    pill_y = height - margin - 75
+    draw.rounded_rectangle(
+        [((width - bw) // 2 - 24, pill_y - 8), ((width + bw) // 2 + 24, pill_y + bh + 8)],
+        radius=14,
+        fill="#1E293B"
+    )
+    draw.text(((width - bw) // 2, pill_y), brand_text, fill="#E2E8F0", font=font_brand)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", quality=95)
+    return buf.getvalue()
     
